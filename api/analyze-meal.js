@@ -3,6 +3,13 @@ import MEXT_FOODS from "../data/mext-food-master.js";
 
 // [official name, kcal, protein, fat, carbohydrate, fiber, salt, MEXT food number]
 const FOOD_DB=MEXT_FOODS.map(([id,name,k,p,f,c,fi,s])=>[name,k,p,f,c,fi,s,id]);
+// Stable canonical rows for common drinks. These override ambiguous master-name matching.
+const CANONICAL_FOODS={
+ "紅茶":["紅茶（浸出液）",1,0.1,0,0.1,0,0,"canonical-tea"],
+ "コーヒー":["コーヒー（浸出液）",4,0.2,0,0.7,0,0,"canonical-coffee"],
+ "普通牛乳":["普通牛乳",61,3.3,3.8,4.8,0,0.1,"canonical-milk"],
+ "低脂肪牛乳":["低脂肪牛乳",42,3.8,1.0,5.5,0,0.2,"canonical-lowfat-milk"]
+};
 function norm(s=""){return s.replace(/[\s　]/g,"").toLowerCase()}
 function tokenizeFood(s=""){
  return norm(s).replace(/[（）()［］\[\]・、,+／/]/g," ").split(/\s+/).filter(Boolean);
@@ -50,6 +57,7 @@ function bestFood(query,minScore=650){
 function findFood(name){
  const alias=directAlias(name);
  if(alias){
+   if(CANONICAL_FOODS[alias])return CANONICAL_FOODS[alias];
    const exact=FOOD_DB.find(x=>norm(x[0])===norm(alias));
    if(exact)return exact;
    const hit=bestFood(alias,650);
@@ -141,7 +149,20 @@ JSONのみ:
       vision.dish_name=/紅茶/.test(vision.dish_name||"")?"ミルクティーとアップルパイ":"アップルパイ";
     }
   }
-  if(vision.items?.length){const tea=vision.items.filter(x=>/紅茶/.test(x.food_name));const milk=vision.items.filter(x=>/ミルク|牛乳|クリーム/.test(x.food_name));if(tea.length&&milk.length){vision.dish_name="ミルクティー";}}
+  if(vision.items?.length){
+    const tea=vision.items.filter(x=>/紅茶/.test(x.food_name));
+    if(tea.length>1){
+      // A cup and a pot are usually the same serving context. Count the cup as consumed;
+      // do not count the reserve tea in the pot unless the user explicitly adds it later.
+      const cup=tea.find(x=>/カップ|cup/i.test(x.food_name))||tea[0];
+      const others=new Set(tea.filter(x=>x!==cup));
+      vision.items=vision.items.filter(x=>!others.has(x));
+      cup.food_name="紅茶";
+      cup.nutrition_search_name="紅茶";
+    }
+    const milk=vision.items.filter(x=>/ミルク|牛乳|クリーム/.test(x.food_name));
+    if(vision.items.some(x=>/紅茶/.test(x.food_name))&&milk.length){vision.dish_name="ミルクティー";}
+  }
   if(vision.items?.length){
     vision.items=vision.items.map((item,i)=>{
       const key=String(i);
