@@ -73,3 +73,8 @@ nav button:first-child{color:#e95e8d}
 .photo-source-sheet>b{display:block;font-size:19px;color:#46363b}.photo-source-sheet>p{margin:6px 0 16px;color:#8a747c;font-size:12px;line-height:1.5}
 .photo-source-sheet>div{display:grid;grid-template-columns:1fr 1fr;gap:10px}.photo-source-sheet>div button{min-height:76px;border:1px solid #ffdce7;border-radius:16px;background:#fff3f7;color:#d94f7e;font-weight:800;display:flex;flex-direction:column;gap:7px;align-items:center;justify-content:center}
 .photo-source-sheet svg{width:23px;height:23px}.photo-source-cancel{width:100%;margin-top:9px;padding:12px;border:0;background:transparent;color:#7f6d73}
+
+/* Nutrition confirmation */
+.confirm-box{display:block!important;background:#fff9e8;border:1px solid #f4df9d;border-radius:11px;padding:8px!important;margin:6px 34px 4px 0}
+.confirm-box small{display:block!important;margin:0 0 5px!important;color:#80672c!important}.confirm-box select{width:100%;padding:8px;border:1px solid #ead69b;border-radius:9px;background:white;color:#4d4145}
+.amount-correct{display:block!important;border:0!important;padding:4px 34px 0 0!important}.amount-correct label{margin:0!important;font-size:11px!important;color:#7e6d73!important}.amount-correct input{display:inline-block!important;width:68px!important;margin:0 4px!important;padding:6px 7px!important;font-size:14px!important}
