@@ -127,11 +127,17 @@ JSONのみ:
         }
       }catch{}
     }
-    if(web_fallbacks.length===calculated.unmapped.length){
-      for(const w of web_fallbacks)Object.keys(calculated.total).forEach(k=>calculated.total[k]+=w.calculated[k]||0);
-      Object.keys(calculated.total).forEach(k=>calculated.total[k]=Math.round(calculated.total[k]*10)/10);
-      calculated.complete=true;calculated.unmapped=[];
+    // Merge every successfully sourced fallback into the calculated items/total.
+    // Determine completeness by the actual unresolved food names, not by array lengths.
+    const resolvedNames=new Set(web_fallbacks.map(w=>w.food_name));
+    for(const w of web_fallbacks){
+      Object.keys(calculated.total).forEach(k=>calculated.total[k]+=Number(w.calculated?.[k])||0);
+      const idx=calculated.items.findIndex(x=>x.food_name===w.food_name&&x.nutrition_source==="unmapped");
+      if(idx>=0)calculated.items[idx]={...calculated.items[idx],...w.calculated,nutrition_source:w.estimation_source,source_name:w.source_name,source_url:w.source_url,confidence:w.confidence};
     }
+    calculated.unmapped=calculated.unmapped.filter(name=>!resolvedNames.has(name));
+    Object.keys(calculated.total).forEach(k=>calculated.total[k]=Math.round(calculated.total[k]*10)/10);
+    calculated.complete=calculated.unmapped.length===0;
   }
   // Never present a partial sum as the meal total. If any detected food is
   // unmapped, nutrition is intentionally withheld until the master/mapping is completed.
