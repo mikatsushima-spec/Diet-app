@@ -20,6 +20,8 @@ function canonicalFood(name=""){
  }
  if(/葉野菜サラダ|グリーンサラダ|野菜サラダ|サラダ/.test(n)) return "レタス 土耕栽培 結球葉 生";
  if(/クッキー|ビスケット|サブレ/.test(n)) return "ビスケット ソフトビスケット";
+ if(/きのこ|キノコ|茸/.test(n)) return "ぶなしめじ 生";
+ if(/炒め油|調理油|サラダ油|植物油/.test(n)) return "調合油";
  if(/オリーブオイル|オリーブ油/.test(n)) return "オリーブ油";
  if(/ごま.*ドレッシング|胡麻.*ドレッシング/.test(n)) return "ごまドレッシング";
  if(/マヨネーズ/.test(n)) return "マヨネーズ 全卵型";
@@ -180,7 +182,7 @@ JSONのみ:
   // Never present a partial sum as the meal total. If any detected food is
   // unmapped, nutrition is intentionally withheld until the master/mapping is completed.
   const meaningful=calculated.items.some(x=>["mext_food_master","web_search","local_web_cache"].includes(x.nutrition_source)&&Number(x.estimated_amount_g)>0);
-  const safeNutrition=calculated.complete&&meaningful?calculated.total:null;
+  const safeNutrition=meaningful?calculated.total:null;
   return res.status(200).json({...vision,items:calculated.items,nutrition:safeNutrition,calculation_note:calculated.complete?"栄養値は食品成分表ベースの100g値×推定重量で計算しています。":"未対応食品（"+calculated.unmapped.join("、")+"）があるため、表示合計は暫定値です。",nutrition_complete:calculated.complete,unmapped_items:calculated.unmapped,web_fallbacks,source_label:"日本食品標準成分表（八訂）増補2023年・2026-03-27版"});
  }catch(e){return res.status(500).json({error:"Photo analysis failed",detail:e?.message||String(e)})}
 }
