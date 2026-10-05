@@ -211,7 +211,7 @@ export default async function handler(req,res){
 4. 揚げ物の吸油、炒め油、ドレッシング、マヨネーズ等は見える/調理法から強く示唆される場合だけ別itemにし、推定であることを明示。
 5. 写真で区別できない候補は alternatives に最大2件。断定しない。
 6. confidenceは食品同定と量推定を総合した0〜1。量が曖昧なら低くする。
-7. カロリーや栄養値、食品成分表の項目名は絶対に生成しない。画像から観察できる名称 food_name、食品カテゴリ food_category、候補 alternatives だけを返す。DBへの対応付けは後工程で行う。\n8. 砂糖やシロップは写真だけで確認できない場合、勝手に加えず needs_user_confirmation に「砂糖・シロップを入れたか」を入れる。ミルクも使用量が不確実なら範囲を広くし確認候補にする。
+7. カロリーや栄養値、食品成分表の項目名は絶対に生成しない。画像から観察できる名称 food_name、食品カテゴリ food_category、候補 alternatives だけを返す。DBへの対応付けは後工程で行う。\n8. 飲み物が紅茶またはコーヒーの場合、砂糖とミルクは使用有無が不明でも必ず items に候補として追加する。未確認なら estimated_amount_g:0、optional_consumption:true とし、砂糖は food_name:"砂糖"、ミルクは food_name:"牛乳" とする。写真から実使用量を推定できる場合だけ推定量を入れる。notesだけに書いて items から省略してはいけない。
 JSONのみ:
 {"dish_name":"鮭定食","items":[{"food_name":"白ごはん","food_category":"穀類","estimated_amount_g":150,"amount_min_g":130,"amount_max_g":180,"cooking_method":"炊飯","confidence":0.85,"assumption":"茶碗1杯程度","alternatives":[]}],"notes":["写真だけでは判別困難な点"],"needs_user_confirmation":["確認すると精度が上がる項目"]}`;
   let vision;
@@ -252,6 +252,16 @@ JSONのみ:
       }
       return item;
     });
+  }
+  // UI invariant: tea/coffee always exposes sugar and milk as removable optional rows.
+  // Do not rely on Vision to remember these confirmation candidates.
+  if(vision.items?.some(x=>/紅茶|ティー|コーヒー|珈琲/.test(x.food_name||""))){
+    if(!vision.items.some(x=>/砂糖|シュガー|シロップ/.test(x.food_name||""))){
+      vision.items.push({food_name:"砂糖",food_category:"調味料",estimated_amount_g:0,amount_min_g:0,amount_max_g:6,cooking_method:"使用不明（添え物）",confidence:0.2,assumption:"使用有無をユーザー確認",alternatives:[],optional_consumption:true});
+    }
+    if(!vision.items.some(x=>/ミルク|牛乳|クリーム/.test(x.food_name||""))){
+      vision.items.push({food_name:"牛乳",food_category:"乳類",estimated_amount_g:0,amount_min_g:0,amount_max_g:30,cooking_method:"使用不明（添え物）",confidence:0.2,assumption:"使用有無をユーザー確認",alternatives:[],optional_consumption:true});
+    }
   }
   if(vision.items?.length){
     const tea=vision.items.filter(x=>/紅茶/.test(x.food_name));
