@@ -1,29 +1,32 @@
 import React,{useEffect,useMemo,useState}from'react';import{createRoot}from'react-dom/client';import{Camera,ChevronLeft,ChevronRight,Home,LineChart,Settings}from'lucide-react';import'./style.css';
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
 
-const K='diet-app-v1',FOOD_CACHE_KEY='diet-app-food-cache-v1';const today=()=>new Date().toISOString().slice(0,10);
+const K='diet-app-v1',FOOD_CACHE_KEY='diet-app-food-cache-v1',NORMALIZATION_CACHE_KEY='diet-app-normalization-cache-v1';const today=()=>new Date().toISOString().slice(0,10);
 function calc(p){let b=10*p.weight+6.25*p.height-5*p.age+(p.sex==='female'?-161:5);let a={low:1.2,light:1.375,medium:1.55,high:1.725}[p.activity];let t=b*a,days=Math.max(1,(new Date(p.targetDate)-new Date(p.startDate))/86400000),def=Math.max(0,(p.weight-p.targetWeight)*7200/days);return{bmr:Math.round(b),tdee:Math.round(t),cal:Math.round(t-def),pace:((p.weight-p.targetWeight)/(days/7)).toFixed(2)}} 
 function App(){const[s,setS]=useState(()=>JSON.parse(localStorage.getItem(K)||'null')||{profile:null,weights:[],meals:{}});const[tab,setTab]=useState('today');const[install,setInstall]=useState(null);useEffect(()=>localStorage.setItem(K,JSON.stringify(s)),[s]);useEffect(()=>{const h=e=>{e.preventDefault();setInstall(e)};window.addEventListener('beforeinstallprompt',h);return()=>window.removeEventListener('beforeinstallprompt',h)},[]);async function installApp(){if(!install)return;await install.prompt();setInstall(null)}if(!s.profile)return <Setup done={p=>setS({...s,profile:p,weights:[{date:today(),weight:p.weight}]})}/>;return <><main>{tab==='today'?<Today s={s} setS={setS}/>:tab==='weight'?<Weight s={s} setS={setS}/>:<><section><header><h1>設定</h1></header>{install&&<div className="install-card"><div><b>ホーム画面に追加</b><small>アプリのようにすぐ開けます</small></div><button onClick={installApp}>追加</button></div>}</section><Setup initial={s.profile} done={p=>setS({...s,profile:p})}/></>}</main><nav><button onClick={()=>setTab('today')}><Home/>今日</button><button onClick={()=>setTab('weight')}><LineChart/>体重</button><button onClick={()=>setTab('settings')}><Settings/>設定</button></nav></>}
 function Setup({done,initial}){const[p,setP]=useState(initial||{sex:'female',age:40,height:160,weight:60,targetWeight:55,startDate:today(),targetDate:'2027-04-06',activity:'light'});let c=calc(p);return <section className="setup"><h1>目標を決める</h1><p>まず、目標体重と期間から無理のない目安を作ります。</p><div className="card form"><label>現在体重 (kg)<input type="number" step=".1" value={p.weight} onChange={e=>setP({...p,weight:+e.target.value})}/></label><label>目標体重 (kg)<input type="number" step=".1" value={p.targetWeight} onChange={e=>setP({...p,targetWeight:+e.target.value})}/></label><label>目標達成日<input type="date" value={p.targetDate} onChange={e=>setP({...p,targetDate:e.target.value})}/></label><div className="row"><label>身長 cm<input type="number" value={p.height} onChange={e=>setP({...p,height:+e.target.value})}/></label><label>年齢<input type="number" value={p.age} onChange={e=>setP({...p,age:+e.target.value})}/></label></div><label>活動量<select value={p.activity} onChange={e=>setP({...p,activity:e.target.value})}><option value="low">ほぼ座っている</option><option value="light">軽く動く・歩く</option><option value="medium">適度に運動</option><option value="high">かなり活動的</option></select></label></div><div className="card result"><b>1日の目安 {c.cal} kcal</b><span>推定消費 {c.tdee} kcal</span><span>目標ペース −{c.pace} kg/週</span></div><button className="primary" onClick={()=>done(p)}>この目標ではじめる</button></section>}
-function Today({s,setS}){const[scan,setScan]=useState(null);const[analyzing,setAnalyzing]=useState(false);const[dressing,setDressing]=useState('');const[selectedDate,setSelectedDate]=useState(today());let c=calc(s.profile),d=selectedDate,ms=s.meals[d]||[],sum=ms.reduce((a,m)=>({cal:a.cal+m.cal,p:a.p+m.p,f:a.f+m.f,c:a.c+m.c}),{cal:0,p:0,f:0,c:0});let goals={p:Math.round(s.profile.weight*1.5),f:Math.round(c.cal*.27/9),c:Math.round((c.cal-s.profile.weight*1.5*4-(c.cal*.27))/4)};function add(type){document.getElementById('photo-'+type).click()}
-async function picked(type,e){let file=e.target.files?.[0];if(!file)return;let url=URL.createObjectURL(file);setScan({type,url,name:'解析中…',cal:'',p:'',f:'',c:'',items:[]});setAnalyzing(true);e.target.value='';try{let image=await compressImage(file);let r=await fetch('/api/analyze-meal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image,food_cache:JSON.parse(localStorage.getItem(FOOD_CACHE_KEY)||'{}')})});let rawResponse=await r.text();let data={};try{data=JSON.parse(rawResponse)}catch{}if(!r.ok)throw new Error(data.detail||data.error||rawResponse||('HTTP '+r.status));if(data.web_fallbacks?.length){
-       let cache=JSON.parse(localStorage.getItem(FOOD_CACHE_KEY)||'{}');
-       for(const w of data.web_fallbacks){
-         if(w.estimation_source==="web_search"&&w.food_name){
-           const entry={food_name:w.food_name,search_name:w.search_name,basis:w.basis||"per_100g",calories:w.calories,protein_g:w.protein_g,fat_g:w.fat_g,carbohydrate_g:w.carbohydrate_g,fiber_g:w.fiber_g,salt_g:w.salt_g,source_name:w.source_name,source_url:w.source_url,confidence:w.confidence,cached_at:new Date().toISOString()};
-           cache[w.cache_key||w.search_name||w.food_name]=entry;
-         }
-       }
-       localStorage.setItem(FOOD_CACHE_KEY,JSON.stringify(cache));
-     }
-     let names=(data.items||[]).map(x=>x.food_name).join('・');setScan(x=>({...x,name:data.dish_name||names||'食事',items:data.items||[],notes:data.notes||[],cal:data.nutrition?.calories??'',p:data.nutrition?.protein_g??'',f:data.nutrition?.fat_g??'',c:data.nutrition?.carbohydrate_g??'',calculation_note:data.calculation_note,needs_confirmation:data.needs_user_confirmation||[]}))}catch(err){setScan(x=>({...x,name:'',error:(err?.message||'').includes('413')?'写真を小さくして再送できませんでした。もう一度写真を選んでください。':'AI解析を利用できません：'+(err?.message||'不明なエラー')}))}finally{setAnalyzing(false)}}
+function analysisCaches(){
+ return {
+  food_cache:JSON.parse(localStorage.getItem(FOOD_CACHE_KEY)||'{}'),
+  normalization_cache:JSON.parse(localStorage.getItem(NORMALIZATION_CACHE_KEY)||'{}')
+ };
+}
+function persistAnalysisCaches(data){
+ if(data.normalization_updates?.length){
+   const cache=JSON.parse(localStorage.getItem(NORMALIZATION_CACHE_KEY)||'{}');
+   for(const n of data.normalization_updates)if(n.key&&n.canonical_name)cache[n.key]={canonical_name:n.canonical_name,canonical_category:n.canonical_category||'',is_food:n.is_food!==false,is_garnish:!!n.is_garnish,normalization_confidence:n.normalization_confidence,cached_at:new Date().toISOString()};
+   localStorage.setItem(NORMALIZATION_CACHE_KEY,JSON.stringify(cache));
+ }
+ persistAnalysisCaches(data);
+          let names=(data.items||[]).map(x=>x.food_name).join('・');setScan(x=>({...x,name:data.dish_name||names||'食事',items:data.items||[],notes:data.notes||[],cal:data.nutrition?.calories??'',p:data.nutrition?.protein_g??'',f:data.nutrition?.fat_g??'',c:data.nutrition?.carbohydrate_g??'',calculation_note:data.calculation_note,needs_confirmation:data.needs_user_confirmation||[]}))}catch(err){setScan(x=>({...x,name:'',error:(err?.message||'').includes('413')?'写真を小さくして再送できませんでした。もう一度写真を選んでください。':'AI解析を利用できません：'+(err?.message||'不明なエラー')}))}finally{setAnalyzing(false)}}
 async function removeDetectedItem(index){
  if(!scan?.items)return;
  const items=scan.items.filter((_,i)=>i!==index);
  setAnalyzing(true);
  try{
-  let r=await fetch('/api/analyze-meal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items,dish_name:scan.name,food_cache:JSON.parse(localStorage.getItem(FOOD_CACHE_KEY)||'{}')})});
+  let r=await fetch('/api/analyze-meal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items,dish_name:scan.name,...analysisCaches()})});
   let raw=await r.text(),data={};try{data=JSON.parse(raw)}catch{}if(!r.ok)throw new Error(data.detail||data.error||raw||('HTTP '+r.status));
+  persistAnalysisCaches(data);
   setScan(x=>({...x,items:data.items||items,cal:data.nutrition?.calories??'',p:data.nutrition?.protein_g??'',f:data.nutrition?.fat_g??'',c:data.nutrition?.carbohydrate_g??'',calculation_note:data.calculation_note,needs_confirmation:data.needs_user_confirmation||[]}));
  }catch(err){setScan(x=>({...x,error:'再計算できませんでした：'+(err?.message||'不明なエラー')}))}
  finally{setAnalyzing(false)}
@@ -32,8 +35,9 @@ async function chooseDressing(index,value){
  setDressing(value);if(!value||!scan?.items)return;
  setAnalyzing(true);
  try{
-  let r=await fetch('/api/analyze-meal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:scan.items,dish_name:scan.name,overrides:{[String(index)]:{food_name:value}},food_cache:JSON.parse(localStorage.getItem(FOOD_CACHE_KEY)||'{}')})});
+  let r=await fetch('/api/analyze-meal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:scan.items,dish_name:scan.name,overrides:{[String(index)]:{food_name:value}},...analysisCaches()})});
   let raw=await r.text(),data={};try{data=JSON.parse(raw)}catch{}if(!r.ok)throw new Error(data.detail||data.error||raw||('HTTP '+r.status));
+  persistAnalysisCaches(data);
   setScan(x=>({...x,items:data.items||x.items,cal:data.nutrition?.calories??'',p:data.nutrition?.protein_g??'',f:data.nutrition?.fat_g??'',c:data.nutrition?.carbohydrate_g??'',calculation_note:data.calculation_note,needs_confirmation:(x.needs_confirmation||[]).filter(q=>!/ドレッシング|ソース/.test(q))}));
  }catch(err){setScan(x=>({...x,error:'再計算できませんでした：'+(err?.message||'不明なエラー')}))}
  finally{setAnalyzing(false)}
