@@ -98,17 +98,13 @@ function nutrients(items){
 }
 
 function normalizationKey(item={}){
- return norm([item.food_name,item.food_category,item.cooking_method,(item.alternatives||[]).join("|")].join("::"));
+ return "v2::"+norm([item.food_name,item.food_category,item.cooking_method,item.assumption,(item.alternatives||[]).join("|")].join("::"));
 }
 function deterministicCanonical(item={}){
  const name=String(item.food_name||"");
  const alias=directAlias(name);
  if(alias)return {canonical_name:alias,canonical_category:item.food_category||"",normalization_source:"rule",normalization_confidence:0.99};
- // Only deterministic rules that express a semantic category, not a DB row.
- if(/クッキー|ビスケット|サブレ/.test(name))return {canonical_name:"ソフトビスケット",canonical_category:"菓子類",normalization_source:"rule",normalization_confidence:0.9};
- if(/アップル.*パイ|りんご.*パイ|リンゴ.*パイ/.test(name))return {canonical_name:"アップルパイ",canonical_category:"菓子類",normalization_source:"rule",normalization_confidence:0.95};
- const context=norm([name,item.assumption,(item.alternatives||[]).join(" "),item.food_category].join(" "));
- if(/ケーキ|焼き菓子|タルト|パイ/.test(name)&&/りんご|リンゴ|アップル/.test(context))return {canonical_name:"アップルパイ",canonical_category:"菓子類",normalization_source:"rule",normalization_confidence:0.93};
+ // Keep code rules deterministic only. Semantic food interpretation belongs to the normalizer LLM.
  return null;
 }
 async function normalizeItems(client,items=[],normalizationCache={}){
@@ -133,7 +129,9 @@ async function normalizeItems(client,items=[],normalizationCache={}){
 ルール:
 - 見た目の表現、料理名、形状名を一般的な食品名へ変換する。
 - 複合料理でも、入力itemがすでに一つの食品として妥当なら無理に分解しない。
-- 「フルーツ系パイ/タルト」「ケーキ」のような汎用名でも、alternatives・assumption・カテゴリにりんご/アップルの根拠があれば「アップルパイ」のように、より具体的で検索可能な一般食品名にする。具体的な食品を「ケーキ」のような上位概念へ丸めない。
+- food_nameだけでなく alternatives・assumption・food_category・cooking_method を根拠として使う。
+- 入力に、より具体的な食品を示す根拠がある場合は「ケーキ」「肉」「魚」「きのこ」のような上位概念へ丸めず、根拠の範囲で最も具体的な一般食品名にする。
+- 根拠が弱い場合は無理に具体化せず一般名を維持する。見えていない材料や種類を推測で追加しない。
 - 「豚肉」「まいたけ」「炒め油」のように栄養計算単位として扱える名称にする。
 - 食品でない物は is_food=false。飾りで通常食べない物は is_garnish=true。
 - 不明な場合も架空の固有商品名を作らず、最も一般的な食品名にする。
