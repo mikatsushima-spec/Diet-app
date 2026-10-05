@@ -54,7 +54,17 @@ function bestFood(query,minScore=650){
  const ranked=FOOD_DB.map(x=>[scoreFood(query,x),x]).sort((a,b)=>b[0]-a[0]);
  return ranked[0]?.[0]>=minScore?ranked[0][1]:null;
 }
-function findFood(name){
+function foodCandidates(name,limit=3){
+ const alias=directAlias(name);
+ const query=alias||name;
+ let ranked=FOOD_DB.map(x=>[scoreFood(query,x),x]).filter(x=>x[0]>=650).sort((a,b)=>b[0]-a[0]);
+ const seen=new Set(),out=[];
+ for(const [score,row] of ranked){const id=String(row[7]);if(seen.has(id))continue;seen.add(id);out.push({food_number:row[7],food_name:row[0],score});if(out.length>=limit)break}
+ return out;
+}
+function findFoodByNumber(id){return FOOD_DB.find(x=>String(x[7])===String(id))||null}
+function findFood(name,preferredFoodNumber){
+ if(preferredFoodNumber){const selected=findFoodByNumber(preferredFoodNumber);if(selected)return selected}
  const alias=directAlias(name);
  if(alias){
    if(CANONICAL_FOODS[alias])return CANONICAL_FOODS[alias];
@@ -88,12 +98,20 @@ function nutritionIsPlausible(food,g){
 function nutrients(items){
  let total={calories:0,protein_g:0,fat_g:0,carbohydrate_g:0,fiber_g:0,salt_g:0},mapped=[],unmapped=[];
  for(const item of items){
-  const food=findFood(item.nutrition_search_name||item.food_name); const g=Number(item.estimated_amount_g)||0;
+  const food=findFood(item.nutrition_search_name||item.food_name,item.selected_food_number); const g=Number(item.estimated_amount_g)||0;
   if(g<=0||/未使用/.test(item.cooking_method||"")){mapped.push({...item,estimated_amount_g:0,nutrition_source:"not_consumed"});continue}
   if(food&&nutritionIsPlausible(food,g)){let k=g/100;let v={calories:food[1]*k,protein_g:food[2]*k,fat_g:food[3]*k,carbohydrate_g:food[4]*k,fiber_g:(food[5]||0)*k,salt_g:(food[6]||0)*k};Object.keys(total).forEach(x=>total[x]+=v[x]);mapped.push({...item,nutrition_source:"mext_food_master",food_number:food[7],...Object.fromEntries(Object.entries(v).map(([k,v])=>[k,Math.round(v*10)/10]))})}
   else if(/ミント|パセリ|ハーブ|飾り|添え葉/.test(item.food_name||"")&&g<=5){mapped.push({...item,nutrition_source:"garnish_ignored"});}
   else {mapped.push({...item,nutrition_source:"unmapped"});unmapped.push(item.food_name)}
  }
+ mapped=mapped.map(item=>{
+  if(item.nutrition_source!=="mext_food_master")return item;
+  const candidates=foodCandidates(item.nutrition_search_name||item.food_name,3);
+  const chosen=candidates.find(x=>String(x.food_number)===String(item.food_number));
+  const runner=candidates.find(x=>String(x.food_number)!==String(item.food_number));
+  const ambiguous=!!runner&&(!chosen||chosen.score-runner.score<80);
+  return {...item,food_candidates:candidates,needs_food_confirmation:ambiguous&&!item.selected_food_number};
+ });
  Object.keys(total).forEach(x=>total[x]=Math.round(total[x]*10)/10);return{items:mapped,total,unmapped,complete:unmapped.length===0}
 }
 
@@ -281,7 +299,11 @@ JSONのみ:
   if(vision.items?.length){
     vision.items=vision.items.map((item,i)=>{
       const key=String(i);
-      if(overrides[key]?.food_name==="なし")return {...item,estimated_amount_g:0,food_name:"なし"}; return overrides[key]?.food_name?{...item,food_name:overrides[key].food_name}:item;
+      if(overrides[key]?.food_name==="なし")return {...item,estimated_amount_g:0,food_name:"なし"}; 
+      let next=overrides[key]?.food_name?{...item,food_name:overrides[key].food_name}:item;
+      if(overrides[key]?.estimated_amount_g!=null)next={...next,estimated_amount_g:Number(overrides[key].estimated_amount_g)||0,user_corrected:true};
+      if(overrides[key]?.selected_food_number)next={...next,selected_food_number:String(overrides[key].selected_food_number),user_corrected:true};
+      return next;
     });
   }
   // Final invariant before nutrition: if the recognized dish name clearly names a
