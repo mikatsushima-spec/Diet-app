@@ -96,11 +96,74 @@ function nutrients(items){
  }
  Object.keys(total).forEach(x=>total[x]=Math.round(total[x]*10)/10);return{items:mapped,total,unmapped,complete:unmapped.length===0}
 }
+
+function normalizationKey(item={}){
+ return norm([item.food_name,item.food_category,item.cooking_method,(item.alternatives||[]).join("|")].join("::"));
+}
+function deterministicCanonical(item={}){
+ const name=String(item.food_name||"");
+ const alias=directAlias(name);
+ if(alias)return {canonical_name:alias,canonical_category:item.food_category||"",normalization_source:"rule",normalization_confidence:0.99};
+ // Only deterministic rules that express a semantic category, not a DB row.
+ if(/クッキー|ビスケット|サブレ/.test(name))return {canonical_name:"ソフトビスケット",canonical_category:"菓子類",normalization_source:"rule",normalization_confidence:0.9};
+ if(/アップル.*パイ|りんご.*パイ|リンゴ.*パイ/.test(name))return {canonical_name:"アップルパイ",canonical_category:"菓子類",normalization_source:"rule",normalization_confidence:0.95};
+ return null;
+}
+async function normalizeItems(client,items=[],normalizationCache={}){
+ const out=[];
+ const newlyNormalized=[];
+ for(const item of items){
+   const key=normalizationKey(item);
+   const deterministic=deterministicCanonical(item);
+   if(deterministic){
+     out.push({...item,...deterministic,nutrition_search_name:deterministic.canonical_name,normalization_key:key});
+     continue;
+   }
+   const cached=normalizationCache[key];
+   if(cached?.canonical_name){
+     out.push({...item,...cached,nutrition_search_name:cached.canonical_name,normalization_source:"cache",normalization_key:key});
+     continue;
+   }
+   try{
+     const response=await client.responses.create({
+       model:process.env.OPENAI_NORMALIZATION_MODEL||process.env.OPENAI_VISION_MODEL||"gpt-5.4-mini",
+       input:`あなたは日本の食事記録アプリの食品名正規化器です。画像認識結果を、栄養DBを検索するための一般的な食品単位へ正規化してください。栄養値・カロリー・DBレコードIDは絶対に生成しません。
+ルール:
+- 見た目の表現、料理名、形状名を一般的な食品名へ変換する。
+- 複合料理でも、入力itemがすでに一つの食品として妥当なら無理に分解しない。
+- 「フルーツ系パイ/タルト」でりんごが最有力なら「アップルパイ」のように、検索可能な一般食品名にする。
+- 「豚肉」「まいたけ」「炒め油」のように栄養計算単位として扱える名称にする。
+- 食品でない物は is_food=false。飾りで通常食べない物は is_garnish=true。
+- 不明な場合も架空の固有商品名を作らず、最も一般的な食品名にする。
+JSONのみで {"canonical_name":"","canonical_category":"","is_food":true,"is_garnish":false,"confidence":0.0} を返す。
+入力: ${JSON.stringify({food_name:item.food_name,food_category:item.food_category,cooking_method:item.cooking_method,alternatives:item.alternatives,assumption:item.assumption})}`
+     });
+     let raw=(response.output_text||"").trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,"");
+     const a=raw.indexOf("{"),b=raw.lastIndexOf("}");
+     if(a<0||b<=a)throw new Error("normalization JSON missing");
+     const n=JSON.parse(raw.slice(a,b+1));
+     if(n.is_food===false||n.is_garnish===true){
+       out.push({...item,canonical_name:n.canonical_name||item.food_name,is_food:n.is_food!==false,is_garnish:!!n.is_garnish,normalization_source:"llm",normalization_confidence:Number(n.confidence)||0,normalization_key:key,nutrition_search_name:n.canonical_name||item.food_name});
+       newlyNormalized.push({key,canonical_name:n.canonical_name||item.food_name,canonical_category:n.canonical_category||item.food_category||"",is_food:n.is_food!==false,is_garnish:!!n.is_garnish,normalization_confidence:Number(n.confidence)||0});
+       continue;
+     }
+     if(!n.canonical_name)throw new Error("canonical_name missing");
+     const entry={canonical_name:String(n.canonical_name),canonical_category:String(n.canonical_category||item.food_category||""),is_food:true,is_garnish:false,normalization_confidence:Number(n.confidence)||0};
+     out.push({...item,...entry,nutrition_search_name:entry.canonical_name,normalization_source:"llm",normalization_key:key});
+     newlyNormalized.push({key,...entry});
+   }catch{
+     // Fail open: keep the observed food name so the deterministic resolver/web fallback can still work.
+     out.push({...item,canonical_name:item.food_name,nutrition_search_name:item.food_name,normalization_source:"fallback",normalization_confidence:0,normalization_key:key});
+   }
+ }
+ return {items:out,newlyNormalized};
+}
+
 export default async function handler(req,res){
  if(req.method!=="POST")return res.status(405).json({error:"Method not allowed"});
  if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:"OPENAI_API_KEY is not configured"});
  try{
-  const {image,food_cache={},overrides={},items:providedItems,dish_name:providedDishName}=req.body||{};
+  const {image,food_cache={},normalization_cache={},overrides={},items:providedItems,dish_name:providedDishName}=req.body||{};
   if(!providedItems&&!image?.startsWith("data:image/"))return res.status(400).json({error:"Image is required"});
   const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY});
   const prompt=`日本の食事写真を栄養計算用に分析してください。皿単位の料理名だけでなく、栄養計算できる構成要素へ分解します。
@@ -111,9 +174,9 @@ export default async function handler(req,res){
 4. 揚げ物の吸油、炒め油、ドレッシング、マヨネーズ等は見える/調理法から強く示唆される場合だけ別itemにし、推定であることを明示。
 5. 写真で区別できない候補は alternatives に最大2件。断定しない。
 6. confidenceは食品同定と量推定を総合した0〜1。量が曖昧なら低くする。
-7. カロリーや栄養値は絶対に生成しない。各itemには表示用food_nameとは別に、食品成分表で検索しやすい一般名称 nutrition_search_name と大分類 food_category も返す。商品名・見た目の名称ではなく一般的な食品名にする。\n8. 砂糖やシロップは写真だけで確認できない場合、勝手に加えず needs_user_confirmation に「砂糖・シロップを入れたか」を入れる。ミルクも使用量が不確実なら範囲を広くし確認候補にする。
+7. カロリーや栄養値、食品成分表の項目名は絶対に生成しない。画像から観察できる名称 food_name、食品カテゴリ food_category、候補 alternatives だけを返す。DBへの対応付けは後工程で行う。\n8. 砂糖やシロップは写真だけで確認できない場合、勝手に加えず needs_user_confirmation に「砂糖・シロップを入れたか」を入れる。ミルクも使用量が不確実なら範囲を広くし確認候補にする。
 JSONのみ:
-{"dish_name":"鮭定食","items":[{"food_name":"白ごはん","nutrition_search_name":"炊いた白米","food_category":"穀類","estimated_amount_g":150,"amount_min_g":130,"amount_max_g":180,"cooking_method":"炊飯","confidence":0.85,"assumption":"茶碗1杯程度","alternatives":[]}],"notes":["写真だけでは判別困難な点"],"needs_user_confirmation":["確認すると精度が上がる項目"]}`;
+{"dish_name":"鮭定食","items":[{"food_name":"白ごはん","food_category":"穀類","estimated_amount_g":150,"amount_min_g":130,"amount_max_g":180,"cooking_method":"炊飯","confidence":0.85,"assumption":"茶碗1杯程度","alternatives":[]}],"notes":["写真だけでは判別困難な点"],"needs_user_confirmation":["確認すると精度が上がる項目"]}`;
   let vision;
   if(providedItems){
     vision={dish_name:providedDishName||"食事",items:providedItems,notes:[],needs_user_confirmation:[]};
@@ -184,6 +247,10 @@ JSONのみ:
       alternatives:["ビスケット","サブレ"]
     }];
   }
+  // Separate semantic normalization from image recognition and DB resolution.
+  // Vision says what it sees; this layer decides the stable food concept; nutrients() only resolves DB rows.
+  const normalized=await normalizeItems(client,vision.items||[],normalization_cache);
+  vision.items=normalized.items.filter(x=>x.is_food!==false&&!x.is_garnish);
   let calculated=nutrients(vision.items||[]);
   let web_fallbacks=[];
   if(!calculated.complete){
@@ -237,6 +304,6 @@ JSONのみ:
   const totalWeight=calculated.items.reduce((s,x)=>s+(Number(x.estimated_amount_g)||0),0);
   const totalPlausible=totalWeight>0&&calculated.total.calories>=0&&calculated.total.calories<=totalWeight*9.5&&calculated.total.protein_g<=totalWeight&&calculated.total.fat_g<=totalWeight&&calculated.total.carbohydrate_g<=totalWeight*1.1;
   const safeNutrition=meaningful&&totalPlausible?calculated.total:null;
-  return res.status(200).json({...vision,items:calculated.items,nutrition:safeNutrition,calculation_note:calculated.complete?"栄養値は食品成分表ベースの100g値×推定重量で計算しています。":"未対応食品（"+calculated.unmapped.join("、")+"）があるため、表示合計は暫定値です。",nutrition_complete:calculated.complete,unmapped_items:calculated.unmapped,web_fallbacks,source_label:"日本食品標準成分表（八訂）増補2023年・2026-03-27版"});
+  return res.status(200).json({...vision,items:calculated.items,normalization_updates:normalized.newlyNormalized,nutrition:safeNutrition,calculation_note:calculated.complete?"栄養値は食品成分表ベースの100g値×推定重量で計算しています。":"未対応食品（"+calculated.unmapped.join("、")+"）があるため、表示合計は暫定値です。",nutrition_complete:calculated.complete,unmapped_items:calculated.unmapped,web_fallbacks,source_label:"日本食品標準成分表（八訂）増補2023年・2026-03-27版"});
  }catch(e){return res.status(500).json({error:"Photo analysis failed",detail:e?.message||String(e)})}
 }
