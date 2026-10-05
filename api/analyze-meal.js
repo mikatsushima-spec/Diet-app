@@ -36,6 +36,11 @@ function findFood(name){
    const tokens=n.split(/[・\/（）()、,]/).filter(x=>x.length>=2);
    hits=FOOD_DB.filter(x=>{const m=norm(x[0]);return tokens.some(t=>m.includes(t)||t.includes(m))});
  }
+ if(!hits.length&&/クッキー|ビスケット|サブレ/.test(name)){
+   // Stable fallback for ordinary sweet cookies/biscuits, per 100 g.
+   // Keeps nutrition available even when the generated MEXT subset lacks the exact label.
+   return ["ソフトビスケット",522,5.7,27.6,62.6,1.4,0.6,"cookie-fallback"];
+ }
  if(!hits.length)return null;
  return hits.sort((a,b)=>{const an=norm(a[0]),bn=norm(b[0]);const ae=an===n?0:1,be=bn===n?0:1;return ae-be||an.length-bn.length})[0];
 }
@@ -85,7 +90,8 @@ JSONのみ:
     vision.items=vision.items.filter(x=>{
       const name=String(x.food_name||"");
       const method=String(x.cooking_method||"");
-      if(nonFood.test(name))return false;
+      const edible=/クッキー|ビスケット|サブレ|ケーキ|パイ|タルト|パン|ごはん|米|肉|魚|卵|野菜|果物|サラダ|麺|紅茶|コーヒー|牛乳|ミルク|ヨーグルト|チーズ/i;
+      if(nonFood.test(name)&&!edible.test(name))return false;
       if(/未使用|使用していない|添え物/.test(method))return false;
       if(unusedAccessory.test(name)&&!/使用済|投入|混ぜ|加え/.test(method))return false;
       return true;
