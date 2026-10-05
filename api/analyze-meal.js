@@ -19,6 +19,11 @@ function canonicalFood(name=""){
    return "じゃがいも 塊茎 皮なし 生";
  }
  if(/葉野菜サラダ|グリーンサラダ|野菜サラダ|サラダ/.test(n)) return "レタス 土耕栽培 結球葉 生";
+ if(/ノンオイル.*ドレッシング|ドレッシング.*ノンオイル/.test(n)) return "ドレッシングタイプ和風調味料 ノンオイルタイプ";
+ if(/和風.*ドレッシング|ドレッシング.*和風/.test(n)) return "ドレッシングタイプ和風調味料";
+ if(/ごま.*ドレッシング|胡麻.*ドレッシング/.test(n)) return "ごまドレッシング";
+ if(/フレンチ.*ドレッシング/.test(n)) return "フレンチドレッシング";
+ if(/マヨネーズ/.test(n)) return "マヨネーズ 全卵型";
  return name;
 }
 function findFood(name){
@@ -44,7 +49,7 @@ export default async function handler(req,res){
  if(req.method!=="POST")return res.status(405).json({error:"Method not allowed"});
  if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:"OPENAI_API_KEY is not configured"});
  try{
-  const {image,food_cache={}}=req.body||{};if(!image?.startsWith("data:image/"))return res.status(400).json({error:"Image is required"});
+  const {image,food_cache={},overrides={}}=req.body||{};if(!image?.startsWith("data:image/"))return res.status(400).json({error:"Image is required"});
   const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY});
   const prompt=`日本の食事写真を栄養計算用に分析してください。皿単位の料理名だけでなく、栄養計算できる構成要素へ分解します。
 手順:
@@ -62,6 +67,12 @@ JSONのみ:
   let vision;
   try{vision=JSON.parse(raw)}catch(parseErr){const start=raw.indexOf("{"),end=raw.lastIndexOf("}");if(start<0||end<=start)throw new Error("AI response was not valid JSON");vision=JSON.parse(raw.slice(start,end+1))}
   if(vision.items?.length){const tea=vision.items.filter(x=>/紅茶/.test(x.food_name));const milk=vision.items.filter(x=>/ミルク|牛乳|クリーム/.test(x.food_name));if(tea.length&&milk.length){vision.dish_name="ミルクティー";}}
+  if(vision.items?.length){
+    vision.items=vision.items.map((item,i)=>{
+      const key=String(i);
+      return overrides[key]?.food_name?{...item,food_name:overrides[key].food_name}:item;
+    });
+  }
   let calculated=nutrients(vision.items||[]);
   let web_fallbacks=[];
   if(!calculated.complete){
