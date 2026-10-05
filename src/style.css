@@ -60,5 +60,5 @@ nav button:first-child{color:#e95e8d}
 .chart-legend span{display:flex;align-items:center;gap:5px}.chart-legend i{display:inline-block;width:18px;height:3px;border-radius:3px}
 .legend-actual{background:#ff6f9f}.legend-avg{background:#8a7180}.legend-target{background:#e0a72f}
 
-.saved-food{position:relative;padding-right:46px}
-.delete-meal{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:34px;height:34px;border:0;border-radius:50%;background:#fff1f5;color:#e85c8b;font-size:25px;line-height:1;display:flex;align-items:center;justify-content:center}
+.saved-food{position:relative;padding-right:42px}
+.delete-meal{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:28px;height:28px;padding:0;border:0;border-radius:50%;background:#fff1f5;color:#e85c8b;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center}
