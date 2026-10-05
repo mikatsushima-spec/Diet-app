@@ -109,6 +109,21 @@ JSONのみ:
       if(overrides[key]?.food_name==="なし")return {...item,estimated_amount_g:0,food_name:"なし"}; return overrides[key]?.food_name?{...item,food_name:overrides[key].food_name}:item;
     });
   }
+  // Final invariant before nutrition: if the recognized dish name clearly names a
+  // main edible cookie/biscuit but the item list lost it during normalization,
+  // restore the main food here (after every filter/transform).
+  if(/クッキー|ビスケット|サブレ/.test(vision.dish_name||"")&&!vision.items?.some(x=>/クッキー|ビスケット|サブレ/.test(x.food_name||""))){
+    vision.items=[...(vision.items||[]),{
+      food_name:"クッキー",
+      estimated_amount_g:40,
+      amount_min_g:30,
+      amount_max_g:55,
+      cooking_method:"焼成",
+      confidence:0.65,
+      assumption:"料理名と写真の主役からクッキー2枚として復元",
+      alternatives:["ビスケット","サブレ"]
+    }];
+  }
   let calculated=nutrients(vision.items||[]);
   let web_fallbacks=[];
   if(!calculated.complete){
@@ -158,7 +173,8 @@ JSONのみ:
   }
   // Never present a partial sum as the meal total. If any detected food is
   // unmapped, nutrition is intentionally withheld until the master/mapping is completed.
-  const safeNutrition=calculated.complete?calculated.total:null;
+  const meaningful=calculated.items.some(x=>["mext_food_master","web_search","local_web_cache"].includes(x.nutrition_source)&&Number(x.estimated_amount_g)>0);
+  const safeNutrition=calculated.complete&&meaningful?calculated.total:null;
   return res.status(200).json({...vision,items:calculated.items,nutrition:safeNutrition,calculation_note:calculated.complete?"栄養値は食品成分表ベースの100g値×推定重量で計算しています。":"未対応食品（"+calculated.unmapped.join("、")+"）があるため、表示合計は暫定値です。",nutrition_complete:calculated.complete,unmapped_items:calculated.unmapped,web_fallbacks,source_label:"日本食品標準成分表（八訂）増補2023年・2026-03-27版"});
  }catch(e){return res.status(500).json({error:"Photo analysis failed",detail:e?.message||String(e)})}
 }
