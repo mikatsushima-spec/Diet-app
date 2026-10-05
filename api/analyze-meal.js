@@ -4,24 +4,28 @@ import MEXT_FOODS from "../data/mext-food-master.js";
 // [official name, kcal, protein, fat, carbohydrate, fiber, salt, MEXT food number]
 const FOOD_DB=MEXT_FOODS.map(([id,name,k,p,f,c,fi,s])=>[name,k,p,f,c,fi,s,id]);
 function norm(s=""){return s.replace(/[\s　]/g,"").toLowerCase()}
-function canonicalFood(name=""){
+function tokenizeFood(s=""){
+ return norm(s).replace(/[（）()［］\[\]・、,+／/]/g," ").split(/\s+/).filter(Boolean);
+}
+const FOOD_CATEGORY_RULES=[
+ {re:/油|オイル/, candidates:["調合油","オリーブ油","ごま油"]},
+ {re:/きのこ|キノコ|茸/, candidates:["ぶなしめじ 生","えのきたけ 生","生しいたけ 菌床栽培 生"]},
+ {re:/クッキー|ビスケット|サブレ/, candidates:["ビスケット ソフトビスケット","ビスケット ハードビスケット"]},
+ {re:/豚/, candidates:["ぶた 大型種肉 ロース 赤肉 生","ぶた 大型種肉 もも 赤肉 生","ぶた ひき肉 生"]},
+ {re:/鶏|チキン/, candidates:["にわとり 若どり むね 皮なし 生","にわとり 若どり もも 皮なし 生"]},
+ {re:/牛肉|ビーフ/, candidates:["うし 輸入牛肉 もも 赤肉 生","うし ひき肉 生"]},
+ {re:/魚|鮭|さけ|サケ/, candidates:["しろさけ 生","しろさけ 焼き"]},
+ {re:/卵|たまご/, candidates:["鶏卵 全卵 生","鶏卵 全卵 ゆで"]},
+ {re:/葉野菜|サラダ/, candidates:["レタス 土耕栽培 結球葉 生"]},
+];
+function directAlias(name=""){
  const n=norm(name);
  if(/ミルク|牛乳/.test(n)) return /低脂肪/.test(n)?"低脂肪牛乳":/生クリーム|クリーム/.test(n)&&!/ミルク/.test(n)?"生クリーム":"普通牛乳";
  if(/紅茶|ティー/.test(n)) return "紅茶";
  if(/コーヒー|珈琲/.test(n)) return "コーヒー";
  if(/ゆで卵|茹で卵|煮卵/.test(n)) return "鶏卵 全卵 ゆで";
- if(/鮭|さけ|サケ|しゃけ|シャケ/.test(n)){
-   if(/焼|加熱|蒸/.test(n)) return "しろさけ 焼き";
-   return "しろさけ 生";
- }
- if(/じゃがいも|ジャガイモ|馬鈴薯/.test(n)){
-   if(/ゆで|茹|蒸/.test(n)) return "じゃがいも 塊茎 皮なし 水煮";
-   return "じゃがいも 塊茎 皮なし 生";
- }
- if(/葉野菜サラダ|グリーンサラダ|野菜サラダ|サラダ/.test(n)) return "レタス 土耕栽培 結球葉 生";
- if(/クッキー|ビスケット|サブレ/.test(n)) return "ビスケット ソフトビスケット";
- if(/きのこ|キノコ|茸/.test(n)) return "ぶなしめじ 生";
- if(/炒め油|調理油|サラダ油|植物油/.test(n)) return "調合油";
+ if(/鮭|さけ|サケ|しゃけ|シャケ/.test(n)) return /焼|加熱|蒸/.test(n)?"しろさけ 焼き":"しろさけ 生";
+ if(/じゃがいも|ジャガイモ|馬鈴薯/.test(n)) return /ゆで|茹|蒸/.test(n)?"じゃがいも 塊茎 皮なし 水煮":"じゃがいも 塊茎 皮なし 生";
  if(/オリーブオイル|オリーブ油/.test(n)) return "オリーブ油";
  if(/ごま.*ドレッシング|胡麻.*ドレッシング/.test(n)) return "ごまドレッシング";
  if(/マヨネーズ/.test(n)) return "マヨネーズ 全卵型";
@@ -29,27 +33,30 @@ function canonicalFood(name=""){
  if(/ケチャップ/.test(n)) return "トマトケチャップ";
  if(/醤油|しょうゆ/.test(n)) return "こいくちしょうゆ";
  if(/中濃ソース/.test(n)) return "中濃ソース";
- return name;
+ return null;
+}
+function scoreFood(query,row){
+ const q=norm(query),n=norm(row[0]); if(!q||!n)return 0;
+ if(q===n)return 1000;
+ if(n.includes(q)||q.includes(n))return 700-Math.abs(n.length-q.length);
+ const qt=tokenizeFood(query),nt=tokenizeFood(row[0]);
+ let score=0;for(const t of qt){if(t.length<2)continue;if(nt.some(x=>x.includes(t)||t.includes(x)))score+=80}
+ return score;
 }
 function findFood(name){
- const n=norm(canonicalFood(name));
- let hits=FOOD_DB.filter(x=>{const m=norm(x[0]);return n===m||m.includes(n)||n.includes(m)});
- if(!hits.length){
-   const tokens=n.split(/[・\/（）()、,]/).filter(x=>x.length>=2);
-   hits=FOOD_DB.filter(x=>{const m=norm(x[0]);return tokens.some(t=>m.includes(t)||t.includes(m))});
- }
- if(!hits.length&&/クッキー|ビスケット|サブレ/.test(name)){
-   // Stable fallback for ordinary sweet cookies/biscuits, per 100 g.
-   // Keeps nutrition available even when the generated MEXT subset lacks the exact label.
-   return ["ソフトビスケット",522,5.7,27.6,62.6,1.4,0.6,"cookie-fallback"];
- }
- if(!hits.length)return null;
- return hits.sort((a,b)=>{const an=norm(a[0]),bn=norm(b[0]);const ae=an===n?0:1,be=bn===n?0:1;return ae-be||an.length-bn.length})[0];
+ const alias=directAlias(name);
+ if(alias){const hit=FOOD_DB.map(x=>[scoreFood(alias,x),x]).sort((a,b)=>b[0]-a[0])[0];if(hit?.[0]>=80)return hit[1]}
+ let ranked=FOOD_DB.map(x=>[scoreFood(name,x),x]).filter(x=>x[0]>0).sort((a,b)=>b[0]-a[0]);
+ if(ranked[0]?.[0]>=80)return ranked[0][1];
+ const rule=FOOD_CATEGORY_RULES.find(r=>r.re.test(name||""));
+ if(rule)for(const candidate of rule.candidates){const hit=FOOD_DB.map(x=>[scoreFood(candidate,x),x]).sort((a,b)=>b[0]-a[0])[0];if(hit?.[0]>=80)return hit[1]}
+ if(/クッキー|ビスケット|サブレ/.test(name||""))return ["ソフトビスケット",522,5.7,27.6,62.6,1.4,0.6,"cookie-fallback"];
+ return null;
 }
 function nutrients(items){
  let total={calories:0,protein_g:0,fat_g:0,carbohydrate_g:0,fiber_g:0,salt_g:0},mapped=[],unmapped=[];
  for(const item of items){
-  const food=findFood(item.food_name); const g=Number(item.estimated_amount_g)||0;
+  const food=findFood(item.nutrition_search_name||item.food_name); const g=Number(item.estimated_amount_g)||0;
   if(g<=0||/未使用/.test(item.cooking_method||"")){mapped.push({...item,estimated_amount_g:0,nutrition_source:"not_consumed"});continue}
   if(food){let k=g/100;let v={calories:food[1]*k,protein_g:food[2]*k,fat_g:food[3]*k,carbohydrate_g:food[4]*k,fiber_g:(food[5]||0)*k,salt_g:(food[6]||0)*k};Object.keys(total).forEach(x=>total[x]+=v[x]);mapped.push({...item,nutrition_source:"mext_food_master",food_number:food[7],...Object.fromEntries(Object.entries(v).map(([k,v])=>[k,Math.round(v*10)/10]))})}
   else if(/ミント|パセリ|ハーブ|飾り|添え葉/.test(item.food_name||"")&&g<=5){mapped.push({...item,nutrition_source:"garnish_ignored"});}
@@ -72,9 +79,9 @@ export default async function handler(req,res){
 4. 揚げ物の吸油、炒め油、ドレッシング、マヨネーズ等は見える/調理法から強く示唆される場合だけ別itemにし、推定であることを明示。
 5. 写真で区別できない候補は alternatives に最大2件。断定しない。
 6. confidenceは食品同定と量推定を総合した0〜1。量が曖昧なら低くする。
-7. カロリーや栄養値は絶対に生成しない。食品と重量だけ返す。\n8. 砂糖やシロップは写真だけで確認できない場合、勝手に加えず needs_user_confirmation に「砂糖・シロップを入れたか」を入れる。ミルクも使用量が不確実なら範囲を広くし確認候補にする。
+7. カロリーや栄養値は絶対に生成しない。各itemには表示用food_nameとは別に、食品成分表で検索しやすい一般名称 nutrition_search_name と大分類 food_category も返す。商品名・見た目の名称ではなく一般的な食品名にする。\n8. 砂糖やシロップは写真だけで確認できない場合、勝手に加えず needs_user_confirmation に「砂糖・シロップを入れたか」を入れる。ミルクも使用量が不確実なら範囲を広くし確認候補にする。
 JSONのみ:
-{"dish_name":"鮭定食","items":[{"food_name":"白ごはん","estimated_amount_g":150,"amount_min_g":130,"amount_max_g":180,"cooking_method":"炊飯","confidence":0.85,"assumption":"茶碗1杯程度","alternatives":[]}],"notes":["写真だけでは判別困難な点"],"needs_user_confirmation":["確認すると精度が上がる項目"]}`;
+{"dish_name":"鮭定食","items":[{"food_name":"白ごはん","nutrition_search_name":"炊いた白米","food_category":"穀類","estimated_amount_g":150,"amount_min_g":130,"amount_max_g":180,"cooking_method":"炊飯","confidence":0.85,"assumption":"茶碗1杯程度","alternatives":[]}],"notes":["写真だけでは判別困難な点"],"needs_user_confirmation":["確認すると精度が上がる項目"]}`;
   let vision;
   if(providedItems){
     vision={dish_name:providedDishName||"食事",items:providedItems,notes:[],needs_user_confirmation:[]};
