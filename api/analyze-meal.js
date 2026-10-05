@@ -30,7 +30,7 @@ export default async function handler(req,res){
  if(req.method!=="POST")return res.status(405).json({error:"Method not allowed"});
  if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:"OPENAI_API_KEY is not configured"});
  try{
-  const {image}=req.body||{};if(!image?.startsWith("data:image/"))return res.status(400).json({error:"Image is required"});
+  const {image,food_cache={}}=req.body||{};if(!image?.startsWith("data:image/"))return res.status(400).json({error:"Image is required"});
   const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY});
   const prompt=`日本の食事写真を栄養計算用に分析してください。皿単位の料理名だけでなく、栄養計算できる構成要素へ分解します。
 手順:
@@ -53,6 +53,15 @@ JSONのみ:
   if(!calculated.complete){
     for(const missing of calculated.unmapped){
       try{
+        const cached=food_cache[missing];
+        if(cached&&cached.basis==="per_100g"&&Number.isFinite(Number(cached.calories))){
+          const original=(vision.items||[]).find(x=>x.food_name===missing);
+          const g=Number(original?.estimated_amount_g)||0,k=g/100;
+          const vals={calories:Number(cached.calories)*k,protein_g:Number(cached.protein_g||0)*k,fat_g:Number(cached.fat_g||0)*k,carbohydrate_g:Number(cached.carbohydrate_g||0)*k,fiber_g:cached.fiber_g==null?0:Number(cached.fiber_g)*k,salt_g:cached.salt_g==null?0:Number(cached.salt_g)*k};
+          Object.keys(vals).forEach(x=>vals[x]=Math.round(vals[x]*10)/10);
+          web_fallbacks.push({...cached,food_name:missing,estimated_amount_g:g,calculated:vals,estimation_source:"local_web_cache"});
+          continue;
+        }
         const q=await client.responses.create({
           model:process.env.OPENAI_WEB_MODEL||"gpt-5.4-mini",
           tools:[{type:"web_search",search_context_size:"low"}],
