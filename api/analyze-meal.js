@@ -48,10 +48,41 @@ JSONのみ:
   let vision;
   try{vision=JSON.parse(raw)}catch(parseErr){const start=raw.indexOf("{"),end=raw.lastIndexOf("}");if(start<0||end<=start)throw new Error("AI response was not valid JSON");vision=JSON.parse(raw.slice(start,end+1))}
   if(vision.items?.length){const tea=vision.items.filter(x=>/紅茶/.test(x.food_name));const milk=vision.items.filter(x=>/ミルク|牛乳|クリーム/.test(x.food_name));if(tea.length&&milk.length){vision.dish_name="ミルクティー";}}
-  const calculated=nutrients(vision.items||[]);
+  let calculated=nutrients(vision.items||[]);
+  let web_fallbacks=[];
+  if(!calculated.complete){
+    for(const missing of calculated.unmapped){
+      try{
+        const q=await client.responses.create({
+          model:process.env.OPENAI_WEB_MODEL||"gpt-5.4-mini",
+          tools:[{type:"web_search",search_context_size:"low"}],
+          tool_choice:"required",
+          include:["web_search_call.action.sources"],
+          input:`「${missing}」の栄養成分をWeb検索してください。メーカー・飲食店の商品なら公式サイトを最優先。次に公的機関・信頼できる食品/レシピ情報を使うこと。100g当たりに換算できる根拠がある場合だけ、JSONのみで {"food_name":"","basis":"per_100g","calories":0,"protein_g":0,"fat_g":0,"carbohydrate_g":0,"fiber_g":null,"salt_g":null,"source_name":"","source_url":"","confidence":0} を返す。根拠が不十分なら {"food_name":"${missing}","not_found":true} を返す。栄養値を推測で作らないこと。`
+        });
+        let txt=(q.output_text||"").trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,"");
+        const a=txt.indexOf("{"),b=txt.lastIndexOf("}");
+        if(a>=0&&b>a){
+          const hit=JSON.parse(txt.slice(a,b+1));
+          if(!hit.not_found&&Number.isFinite(Number(hit.calories))){
+            const original=(vision.items||[]).find(x=>x.food_name===missing);
+            const g=Number(original?.estimated_amount_g)||0,k=g/100;
+            const vals={calories:Number(hit.calories)*k,protein_g:Number(hit.protein_g||0)*k,fat_g:Number(hit.fat_g||0)*k,carbohydrate_g:Number(hit.carbohydrate_g||0)*k,fiber_g:hit.fiber_g==null?0:Number(hit.fiber_g)*k,salt_g:hit.salt_g==null?0:Number(hit.salt_g)*k};
+            Object.keys(vals).forEach(x=>vals[x]=Math.round(vals[x]*10)/10);
+            web_fallbacks.push({...hit,estimated_amount_g:g,calculated:vals,estimation_source:"web_search"});
+          }
+        }
+      }catch{}
+    }
+    if(web_fallbacks.length===calculated.unmapped.length){
+      for(const w of web_fallbacks)Object.keys(calculated.total).forEach(k=>calculated.total[k]+=w.calculated[k]||0);
+      Object.keys(calculated.total).forEach(k=>calculated.total[k]=Math.round(calculated.total[k]*10)/10);
+      calculated.complete=true;calculated.unmapped=[];
+    }
+  }
   // Never present a partial sum as the meal total. If any detected food is
   // unmapped, nutrition is intentionally withheld until the master/mapping is completed.
   const safeNutrition=calculated.complete?calculated.total:null;
-  return res.status(200).json({...vision,items:calculated.items,nutrition:safeNutrition,calculation_note:calculated.complete?"栄養値は食品成分表ベースの100g値×推定重量で計算しています。":"未対応食品（"+calculated.unmapped.join("、")+"）があるため、表示合計は暫定値です。",nutrition_complete:calculated.complete,unmapped_items:calculated.unmapped,source_label:"日本食品標準成分表（八訂）増補2023年・2026-03-27版"});
+  return res.status(200).json({...vision,items:calculated.items,nutrition:safeNutrition,calculation_note:calculated.complete?"栄養値は食品成分表ベースの100g値×推定重量で計算しています。":"未対応食品（"+calculated.unmapped.join("、")+"）があるため、表示合計は暫定値です。",nutrition_complete:calculated.complete,unmapped_items:calculated.unmapped,web_fallbacks,source_label:"日本食品標準成分表（八訂）増補2023年・2026-03-27版"});
  }catch(e){return res.status(500).json({error:"Photo analysis failed",detail:e?.message||String(e)})}
 }
