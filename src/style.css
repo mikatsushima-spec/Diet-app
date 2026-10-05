@@ -66,3 +66,10 @@ nav button:first-child{color:#e95e8d}
 /* Weight chart axis labels */
 .weight-chart svg .axis-label{font-size:3.1px;fill:#8f7d84;font-weight:600;dominant-baseline:middle}
 .chart-unit{position:absolute;left:3px;bottom:39px;font-size:11px;color:#8f7d84;font-weight:700}
+
+/* Photo source chooser */
+.photo-source-backdrop{position:fixed;inset:0;z-index:30;background:rgba(45,34,38,.38);display:flex;align-items:flex-end;justify-content:center}
+.photo-source-sheet{width:min(520px,100%);background:#fffdfb;border-radius:24px 24px 0 0;padding:22px 20px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -12px 40px rgba(70,45,55,.14)}
+.photo-source-sheet>b{display:block;font-size:19px;color:#46363b}.photo-source-sheet>p{margin:6px 0 16px;color:#8a747c;font-size:12px;line-height:1.5}
+.photo-source-sheet>div{display:grid;grid-template-columns:1fr 1fr;gap:10px}.photo-source-sheet>div button{min-height:76px;border:1px solid #ffdce7;border-radius:16px;background:#fff3f7;color:#d94f7e;font-weight:800;display:flex;flex-direction:column;gap:7px;align-items:center;justify-content:center}
+.photo-source-sheet svg{width:23px;height:23px}.photo-source-cancel{width:100%;margin-top:9px;padding:12px;border:0;background:transparent;color:#7f6d73}
