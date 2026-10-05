@@ -26,7 +26,14 @@ const FOOD_DB=[
  ["みそ",182,12.5,6.0,26.3,4.9,12.4],["砂糖",391,0,0,99.3,0,0]
 ];
 function norm(s=""){return s.replace(/[\s　]/g,"").toLowerCase()}
-function findFood(name){let n=norm(name),hit=FOOD_DB.find(x=>n.includes(norm(x[0]))||norm(x[0]).includes(n));return hit||null}
+function canonicalFood(name=""){
+ const n=norm(name);
+ if(/ミルク|牛乳/.test(n)) return /低脂肪/.test(n)?"低脂肪牛乳":/生クリーム|クリーム/.test(n)&&!/ミルク/.test(n)?"生クリーム":"普通牛乳";
+ if(/紅茶|ティー/.test(n)) return "紅茶";
+ if(/コーヒー|珈琲/.test(n)) return "コーヒー";
+ return name;
+}
+function findFood(name){let n=norm(canonicalFood(name)),hit=FOOD_DB.find(x=>n.includes(norm(x[0]))||norm(x[0]).includes(n));return hit||null}
 function nutrients(items){
  let total={calories:0,protein_g:0,fat_g:0,carbohydrate_g:0,fiber_g:0,salt_g:0},mapped=[],unmapped=[];
  for(const item of items){
@@ -54,7 +61,7 @@ export default async function handler(req,res){
 JSONのみ:
 {"dish_name":"鮭定食","items":[{"food_name":"白ごはん","estimated_amount_g":150,"amount_min_g":130,"amount_max_g":180,"cooking_method":"炊飯","confidence":0.85,"assumption":"茶碗1杯程度","alternatives":[]}],"notes":["写真だけでは判別困難な点"],"needs_user_confirmation":["確認すると精度が上がる項目"]}`;
   const response=await client.responses.create({model:process.env.OPENAI_VISION_MODEL||"gpt-5.4-mini",input:[{role:"user",content:[{type:"input_text",text:prompt},{type:"input_image",image_url:image,detail:"high"}]}]});
-  let raw=response.output_text.trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,"");let vision=JSON.parse(raw);
+  let raw=response.output_text.trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,"");let vision=JSON.parse(raw);\n  if(vision.items?.length){const tea=vision.items.filter(x=>/紅茶/.test(x.food_name));const milk=vision.items.filter(x=>/ミルク|牛乳|クリーム/.test(x.food_name));if(tea.length&&milk.length){vision.dish_name="ミルクティー";}}
   const calculated=nutrients(vision.items||[]);
   return res.status(200).json({...vision,items:calculated.items,nutrition:calculated.total,calculation_note:calculated.complete?"栄養値は食品成分表ベースの100g値×推定重量で計算しています。":"未対応食品（"+calculated.unmapped.join("、")+"）があるため、表示合計は暫定値です。",nutrition_complete:calculated.complete,unmapped_items:calculated.unmapped,source_label:"日本食品標準成分表（八訂）増補2023年ベース"});
  }catch(e){return res.status(500).json({error:"Photo analysis failed",detail:e?.message||String(e)})}
