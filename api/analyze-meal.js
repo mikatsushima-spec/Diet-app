@@ -142,52 +142,52 @@ JSONのみ:
   let calculated=nutrients(vision.items||[]);
   let web_fallbacks=[];
   if(!calculated.complete){
-    for(const missing of calculated.unmapped){
+    const unresolved=calculated.items.filter(x=>x.nutrition_source==="unmapped");
+    for(const original of unresolved){
+      const displayName=String(original.food_name||"").trim();
+      const searchName=String(original.nutrition_search_name||displayName).trim();
+      const cacheKey=norm(searchName);
       try{
-        const cached=food_cache[missing];
+        const cached=food_cache[cacheKey]||food_cache[searchName]||food_cache[displayName];
+        let hit=null,source="local_web_cache";
         if(cached&&cached.basis==="per_100g"&&Number.isFinite(Number(cached.calories))){
-          const original=(vision.items||[]).find(x=>x.food_name===missing);
-          const g=Number(original?.estimated_amount_g)||0,k=g/100;
-          const vals={calories:Number(cached.calories)*k,protein_g:Number(cached.protein_g||0)*k,fat_g:Number(cached.fat_g||0)*k,carbohydrate_g:Number(cached.carbohydrate_g||0)*k,fiber_g:cached.fiber_g==null?0:Number(cached.fiber_g)*k,salt_g:cached.salt_g==null?0:Number(cached.salt_g)*k};
-          Object.keys(vals).forEach(x=>vals[x]=Math.round(vals[x]*10)/10);
-          web_fallbacks.push({...cached,food_name:missing,estimated_amount_g:g,calculated:vals,estimation_source:"local_web_cache"});
-          continue;
-        }
-        const q=await client.responses.create({
-          model:process.env.OPENAI_WEB_MODEL||"gpt-5.4-mini",
-          tools:[{type:"web_search",search_context_size:"low"}],
-          tool_choice:"required",
-          include:["web_search_call.action.sources"],
-          input:`「${missing}」の栄養成分をWeb検索してください。メーカー・飲食店の商品なら公式サイトを最優先。次に公的機関・信頼できる食品/レシピ情報を使うこと。100g当たりに換算できる根拠がある場合だけ、JSONのみで {"food_name":"","basis":"per_100g","calories":0,"protein_g":0,"fat_g":0,"carbohydrate_g":0,"fiber_g":null,"salt_g":null,"source_name":"","source_url":"","confidence":0} を返す。根拠が不十分なら {"food_name":"${missing}","not_found":true} を返す。栄養値を推測で作らないこと。`
-        });
-        let txt=(q.output_text||"").trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,"");
-        const a=txt.indexOf("{"),b=txt.lastIndexOf("}");
-        if(a>=0&&b>a){
-          const hit=JSON.parse(txt.slice(a,b+1));
-          if(!hit.not_found&&Number.isFinite(Number(hit.calories))){
-            const original=(vision.items||[]).find(x=>x.food_name===missing);
-            const g=Number(original?.estimated_amount_g)||0,k=g/100;
-            const vals={calories:Number(hit.calories)*k,protein_g:Number(hit.protein_g||0)*k,fat_g:Number(hit.fat_g||0)*k,carbohydrate_g:Number(hit.carbohydrate_g||0)*k,fiber_g:hit.fiber_g==null?0:Number(hit.fiber_g)*k,salt_g:hit.salt_g==null?0:Number(hit.salt_g)*k};
-            Object.keys(vals).forEach(x=>vals[x]=Math.round(vals[x]*10)/10);
-            web_fallbacks.push({...hit,estimated_amount_g:g,calculated:vals,estimation_source:"web_search"});
+          hit=cached;
+        }else{
+          const q=await client.responses.create({
+            model:process.env.OPENAI_WEB_MODEL||"gpt-5.4-mini",
+            tools:[{type:"web_search",search_context_size:"low"}],
+            tool_choice:"required",
+            include:["web_search_call.action.sources"],
+            input:`「${searchName}」の栄養成分をWeb検索してください。対象の表示名は「${displayName}」です。メーカー・飲食店の商品なら公式サイトを最優先し、一般食品なら公的機関を最優先してください。次に信頼できる食品・レシピ情報を使ってください。100g当たりへ換算できる明確な根拠がある場合だけ、JSONのみで {"food_name":"${displayName}","search_name":"${searchName}","basis":"per_100g","calories":0,"protein_g":0,"fat_g":0,"carbohydrate_g":0,"fiber_g":null,"salt_g":null,"source_name":"","source_url":"","confidence":0} を返してください。source_url は実際に根拠として使ったページURLにしてください。根拠が不十分、または100g換算できない場合は {"food_name":"${displayName}","search_name":"${searchName}","not_found":true} を返してください。栄養値を推測で作らないでください。`
+          });
+          let txt=(q.output_text||"").trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,"");
+          const x=txt.indexOf("{"),y=txt.lastIndexOf("}");
+          if(x>=0&&y>x){
+            const candidate=JSON.parse(txt.slice(x,y+1));
+            if(!candidate.not_found&&candidate.basis==="per_100g"&&Number.isFinite(Number(candidate.calories))&&candidate.source_name&&candidate.source_url){
+              hit=candidate; source="web_search";
+            }
           }
+        }
+        if(hit){
+          const g=Number(original.estimated_amount_g)||0,k=g/100;
+          const vals={calories:Number(hit.calories)*k,protein_g:Number(hit.protein_g||0)*k,fat_g:Number(hit.fat_g||0)*k,carbohydrate_g:Number(hit.carbohydrate_g||0)*k,fiber_g:hit.fiber_g==null?0:Number(hit.fiber_g)*k,salt_g:hit.salt_g==null?0:Number(hit.salt_g)*k};
+          Object.keys(vals).forEach(x=>vals[x]=Math.round(vals[x]*10)/10);
+          web_fallbacks.push({...hit,food_name:displayName,search_name:searchName,cache_key:cacheKey,estimated_amount_g:g,calculated:vals,estimation_source:source});
         }
       }catch{}
     }
-    // Merge every successfully sourced fallback into the calculated items/total.
-    // Determine completeness by the actual unresolved food names, not by array lengths.
     const resolvedNames=new Set(web_fallbacks.map(w=>w.food_name));
     for(const w of web_fallbacks){
       Object.keys(calculated.total).forEach(k=>calculated.total[k]+=Number(w.calculated?.[k])||0);
       const idx=calculated.items.findIndex(x=>x.food_name===w.food_name&&x.nutrition_source==="unmapped");
-      if(idx>=0)calculated.items[idx]={...calculated.items[idx],...w.calculated,nutrition_source:w.estimation_source,source_name:w.source_name,source_url:w.source_url,confidence:w.confidence};
+      if(idx>=0)calculated.items[idx]={...calculated.items[idx],...w.calculated,nutrition_source:w.estimation_source,source_name:w.source_name,source_url:w.source_url,confidence:w.confidence,cache_key:w.cache_key};
     }
     calculated.unmapped=calculated.unmapped.filter(name=>!resolvedNames.has(name));
     Object.keys(calculated.total).forEach(k=>calculated.total[k]=Math.round(calculated.total[k]*10)/10);
     calculated.complete=calculated.unmapped.length===0;
   }
-  // Never present a partial sum as the meal total. If any detected food is
-  // unmapped, nutrition is intentionally withheld until the master/mapping is completed.
+  // Show the resolved portion even when some foods remain unresolved; completeness is reported separately.
   const meaningful=calculated.items.some(x=>["mext_food_master","web_search","local_web_cache"].includes(x.nutrition_source)&&Number(x.estimated_amount_g)>0);
   const safeNutrition=meaningful?calculated.total:null;
   return res.status(200).json({...vision,items:calculated.items,nutrition:safeNutrition,calculation_note:calculated.complete?"栄養値は食品成分表ベースの100g値×推定重量で計算しています。":"未対応食品（"+calculated.unmapped.join("、")+"）があるため、表示合計は暫定値です。",nutrition_complete:calculated.complete,unmapped_items:calculated.unmapped,web_fallbacks,source_label:"日本食品標準成分表（八訂）増補2023年・2026-03-27版"});
