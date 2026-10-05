@@ -19,6 +19,7 @@ function canonicalFood(name=""){
    return "じゃがいも 塊茎 皮なし 生";
  }
  if(/葉野菜サラダ|グリーンサラダ|野菜サラダ|サラダ/.test(n)) return "レタス 土耕栽培 結球葉 生";
+ if(/クッキー|ビスケット|サブレ/.test(n)) return "ビスケット ソフトビスケット";
  if(/オリーブオイル|オリーブ油/.test(n)) return "オリーブ油";
  if(/ごま.*ドレッシング|胡麻.*ドレッシング/.test(n)) return "ごまドレッシング";
  if(/マヨネーズ/.test(n)) return "マヨネーズ 全卵型";
@@ -44,6 +45,7 @@ function nutrients(items){
   const food=findFood(item.food_name); const g=Number(item.estimated_amount_g)||0;
   if(g<=0||/未使用/.test(item.cooking_method||"")){mapped.push({...item,estimated_amount_g:0,nutrition_source:"not_consumed"});continue}
   if(food){let k=g/100;let v={calories:food[1]*k,protein_g:food[2]*k,fat_g:food[3]*k,carbohydrate_g:food[4]*k,fiber_g:(food[5]||0)*k,salt_g:(food[6]||0)*k};Object.keys(total).forEach(x=>total[x]+=v[x]);mapped.push({...item,nutrition_source:"mext_food_master",food_number:food[7],...Object.fromEntries(Object.entries(v).map(([k,v])=>[k,Math.round(v*10)/10]))})}
+  else if(/ミント|パセリ|ハーブ|飾り|添え葉/.test(item.food_name||"")&&g<=5){mapped.push({...item,nutrition_source:"garnish_ignored"});}
   else {mapped.push({...item,nutrition_source:"unmapped"});unmapped.push(item.food_name)}
  }
  Object.keys(total).forEach(x=>total[x]=Math.round(total[x]*10)/10);return{items:mapped,total,unmapped,complete:unmapped.length===0}
@@ -73,6 +75,9 @@ JSONのみ:
     const response=await client.responses.create({model:process.env.OPENAI_VISION_MODEL||"gpt-5.4-mini",input:[{role:"user",content:[{type:"input_text",text:prompt},{type:"input_image",image_url:image,detail:"high"}]}]});
     let raw=(response.output_text||"").trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,"");
     try{vision=JSON.parse(raw)}catch(parseErr){const start=raw.indexOf("{"),end=raw.lastIndexOf("}");if(start<0||end<=start)throw new Error("AI response was not valid JSON");vision=JSON.parse(raw.slice(start,end+1))}
+  }
+  if(/クッキー|ビスケット|サブレ/.test(vision.dish_name||"")&&!vision.items?.some(x=>/クッキー|ビスケット|サブレ/.test(x.food_name||""))){
+    vision.items=[...(vision.items||[]),{food_name:"クッキー",estimated_amount_g:40,amount_min_g:30,amount_max_g:55,cooking_method:"焼成",confidence:0.65,assumption:"写真の主役の焼き菓子2枚。AIがitemsから落としたため料理名から復元",alternatives:["ビスケット","サブレ"]}];
   }
   if(vision.items?.length){
     const nonFood=/ナプキン|ティッシュ|皿|プレート|カップ|ポット|フォーク|スプーン|ナイフ|箸|ストロー|包装|包み紙|容器|トレー|コースター/i;
