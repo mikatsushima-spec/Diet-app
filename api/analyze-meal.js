@@ -9,11 +9,25 @@ function canonicalFood(name=""){
  if(/ミルク|牛乳/.test(n)) return /低脂肪/.test(n)?"低脂肪牛乳":/生クリーム|クリーム/.test(n)&&!/ミルク/.test(n)?"生クリーム":"普通牛乳";
  if(/紅茶|ティー/.test(n)) return "紅茶";
  if(/コーヒー|珈琲/.test(n)) return "コーヒー";
+ if(/ゆで卵|茹で卵|煮卵/.test(n)) return "鶏卵 全卵 ゆで";
+ if(/鮭|さけ|サケ|しゃけ|シャケ/.test(n)){
+   if(/焼|加熱|蒸/.test(n)) return "しろさけ 焼き";
+   return "しろさけ 生";
+ }
+ if(/じゃがいも|ジャガイモ|馬鈴薯/.test(n)){
+   if(/ゆで|茹|蒸/.test(n)) return "じゃがいも 塊茎 皮なし 水煮";
+   return "じゃがいも 塊茎 皮なし 生";
+ }
+ if(/葉野菜サラダ|グリーンサラダ|野菜サラダ|サラダ/.test(n)) return "レタス 土耕栽培 結球葉 生";
  return name;
 }
 function findFood(name){
  const n=norm(canonicalFood(name));
- const hits=FOOD_DB.filter(x=>{const m=norm(x[0]);return n===m||m.includes(n)||n.includes(m)});
+ let hits=FOOD_DB.filter(x=>{const m=norm(x[0]);return n===m||m.includes(n)||n.includes(m)});
+ if(!hits.length){
+   const tokens=n.split(/[・\/（）()、,]/).filter(x=>x.length>=2);
+   hits=FOOD_DB.filter(x=>{const m=norm(x[0]);return tokens.some(t=>m.includes(t)||t.includes(m))});
+ }
  if(!hits.length)return null;
  return hits.sort((a,b)=>{const an=norm(a[0]),bn=norm(b[0]);const ae=an===n?0:1,be=bn===n?0:1;return ae-be||an.length-bn.length})[0];
 }
