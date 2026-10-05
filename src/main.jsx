@@ -49,7 +49,7 @@ function displayNum(v,digits=1){const n=Number(v);if(!Number.isFinite(n))return 
 function Bar({n,v,g}){return <div><div className="barlabel"><b>{n}</b><span>{displayNum(v)} / {displayNum(g)}g</span></div><div className="bar"><i style={{width:Math.min(100,v/g*100)+'%'}}/></div></div>}
 function Weight({s,setS}){
  const all=[...(s.weights||[])].sort((a,b)=>a.date.localeCompare(b.date));
- const latest=all.at(-1)?.weight||s.profile.weight;
+ const latest=Number(all.at(-1)?.weight??s.profile.weight)||0;
  const target=Number(s.profile.targetWeight)||0;
  const periods=[30,90,180,0];
  const [period,setPeriod]=useState(90);
@@ -58,29 +58,38 @@ function Weight({s,setS}){
  const data=all.filter(x=>!cutoff||new Date(x.date+'T00:00:00')>=cutoff);
  const chart=data.length?data:[{date:today(),weight:latest}];
  const vals=chart.map(x=>Number(x.weight)).filter(Number.isFinite);
- const min=Math.min(...vals,target)-1,max=Math.max(...vals,target)+1,range=Math.max(1,max-min);
- const pts=chart.map((x,i)=>({x:chart.length===1?50:5+i*90/(chart.length-1),y:8+(max-Number(x.weight))/range*64,...x}));
+ const rawMin=Math.min(...vals,target),rawMax=Math.max(...vals,target);
+ const padding=Math.max(0.5,(rawMax-rawMin)*0.12);
+ const step=(rawMax-rawMin)>12?5:(rawMax-rawMin)>6?2:1;
+ const min=Math.floor((rawMin-padding)/step)*step;
+ const max=Math.ceil((rawMax+padding)/step)*step;
+ const range=Math.max(step,max-min);
+ const plotTop=8,plotBottom=76,plotHeight=plotBottom-plotTop;
+ const yFor=v=>plotTop+(max-Number(v))/range*plotHeight;
+ const pts=chart.map((x,i)=>({x:chart.length===1?50:10+i*80/(chart.length-1),y:yFor(x.weight),...x}));
  const avgAll=all.map((r,i)=>{
    const d=new Date(r.date+'T00:00:00'),from=new Date(d);from.setDate(from.getDate()-6);
    const window=all.filter(a=>{const ad=new Date(a.date+'T00:00:00');return ad>=from&&ad<=d}).map(a=>Number(a.weight)).filter(Number.isFinite);
    return {...r,avg7:window.length?window.reduce((a,b)=>a+b,0)/window.length:null};
  });
  const avgData=avgAll.filter(x=>chart.some(d=>d.date===x.date));
- const avgPts=avgData.map(x=>{const p=pts.find(d=>d.date===x.date);return p&&x.avg7!=null?{x:p.x,y:8+(max-x.avg7)/range*64,...x}:null}).filter(Boolean);
- const targetY=8+(max-target)/range*64;
+ const avgPts=avgData.map(x=>{const p=pts.find(d=>d.date===x.date);return p&&x.avg7!=null?{x:p.x,y:yFor(x.avg7),...x}:null}).filter(Boolean);
+ const targetY=yFor(target);
+ const ticks=[];for(let v=max;v>=min-0.0001;v-=step)ticks.push(+v.toFixed(1));
  return <section><header><h1>体重</h1></header>
   <div className="hero"><small>現在</small><strong>{displayNum(latest)} <i>kg</i></strong><p>目標 {displayNum(target)} kg ／ あと <b>{displayNum(Math.max(0,latest-target))} kg</b></p></div>
   <button className="primary" onClick={add}>今日の体重を入力</button>
   <div className="card weight-chart-card"><div className="chart-head"><div><h3>体重の推移</h3><small>実測値・7日平均・目標体重</small></div><div className="period-tabs">{periods.map(p=><button key={p} className={period===p?'active':''} onClick={()=>setPeriod(p)}>{p===30?'1か月':p===90?'3か月':p===180?'6か月':'全期間'}</button>)}</div></div>
    <div className="weight-chart">
     <div className="target-label" style={{top:targetY+'%'}}>目標 {displayNum(target)}kg</div>
-    <svg viewBox="0 0 100 82" preserveAspectRatio="none" aria-label="体重推移グラフ">
-     {[8,26,44,62,80].map(y=><line key={y} x1="5" x2="95" y1={y} y2={y} className="gridline"/>)}
-     <line x1="5" x2="95" y1={targetY} y2={targetY} className="target-line"/>
+    <svg viewBox="0 0 100 84" preserveAspectRatio="none" aria-label="体重推移グラフ">
+     {ticks.map(v=><g key={v}><line x1="10" x2="96" y1={yFor(v)} y2={yFor(v)} className="gridline"/><text x="1" y={yFor(v)+1.5} className="axis-label">{displayNum(v)}</text></g>)}
+     <line x1="10" x2="96" y1={targetY} y2={targetY} className="target-line"/>
      {pts.length>1&&<polyline points={pts.map(p=>p.x+','+p.y).join(' ')} className="weight-line"/>}
      {avgPts.length>1&&<polyline points={avgPts.map(p=>p.x+','+p.y).join(' ')} className="avg-line"/>}
      {pts.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r="1.8" className="weight-dot"/>)}
     </svg>
+    <div className="chart-unit">kg</div>
     <div className="chart-legend"><span><i className="legend-actual"/>実測</span><span><i className="legend-avg"/>7日平均</span><span><i className="legend-target"/>目標</span></div>
     <div className="chart-axis"><span>{chart[0]?.date?.slice(5).replace('-','/')}</span><span>{chart.at(-1)?.date?.slice(5).replace('-','/')}</span></div>
    </div>
@@ -88,4 +97,5 @@ function Weight({s,setS}){
   </div>
   <div className="card"><h3>最近の記録</h3>{all.length?all.slice(-12).reverse().map(x=><div className="weightrow" key={x.date}><span>{x.date}</span><b>{displayNum(x.weight)} kg</b></div>):<p>まだ記録がありません</p>}</div>
  </section>
-}createRoot(document.getElementById('root')).render(<App/>);
+}
+createRoot(document.getElementById('root')).render(<App/>);
