@@ -10,7 +10,8 @@ async function picked(type,e){let file=e.target.files?.[0];if(!file)return;let u
        let cache=JSON.parse(localStorage.getItem(FOOD_CACHE_KEY)||'{}');
        for(const w of data.web_fallbacks){
          if(w.estimation_source==="web_search"&&w.food_name){
-           cache[w.food_name]={food_name:w.food_name,basis:w.basis||"per_100g",calories:w.calories,protein_g:w.protein_g,fat_g:w.fat_g,carbohydrate_g:w.carbohydrate_g,fiber_g:w.fiber_g,salt_g:w.salt_g,source_name:w.source_name,source_url:w.source_url,confidence:w.confidence,cached_at:new Date().toISOString()};
+           const entry={food_name:w.food_name,search_name:w.search_name,basis:w.basis||"per_100g",calories:w.calories,protein_g:w.protein_g,fat_g:w.fat_g,carbohydrate_g:w.carbohydrate_g,fiber_g:w.fiber_g,salt_g:w.salt_g,source_name:w.source_name,source_url:w.source_url,confidence:w.confidence,cached_at:new Date().toISOString()};
+           cache[w.cache_key||w.search_name||w.food_name]=entry;
          }
        }
        localStorage.setItem(FOOD_CACHE_KEY,JSON.stringify(cache));
