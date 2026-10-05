@@ -1,30 +1,8 @@
 import OpenAI from "openai";
+import MEXT_FOODS from "../data/mext-food-master.js";
 
-const FOOD_DB=[
- // 日本食品標準成分表（八訂）増補2023年を基礎にした日常食用サブセット（100g当たり）
- ["白ごはん",156,2.5,0.3,37.1,1.5,0],["玄米ごはん",152,2.8,1.0,35.6,1.4,0],["おかゆ",65,1.1,0.1,15.7,0.5,0],
- ["食パン",248,8.9,4.1,46.4,4.2,1.2],["ロールパン",309,10.1,9.0,48.6,2.0,1.2],["うどん",95,2.6,0.4,21.6,1.3,0.3],
- ["そば",130,4.8,1.0,26.0,2.9,0],["パスタ",150,5.8,0.9,32.2,3.0,0],["中華麺",133,4.9,0.6,29.2,1.3,0.2],
- ["鶏むね肉",133,21.3,5.9,0,0,0.1],["鶏もも肉",190,16.6,14.2,0,0,0.2],["ささみ",98,23.9,0.8,0.1,0,0.1],
- ["豚ロース",248,19.3,19.2,0.2,0,0.1],["豚もも",171,20.5,10.2,0.2,0,0.1],["豚ばら",366,14.4,35.4,0.1,0,0.1],
- ["牛もも",235,19.2,18.7,0.5,0,0.1],["牛ばら",472,11.0,50.0,0.1,0,0.1],["ひき肉",220,18.0,16.0,0.5,0,0.2],
- ["焼き鮭",160,25.0,6.0,0.1,0,0.2],["鮭",124,22.3,4.1,0.1,0,0.1],["さば",211,20.6,16.8,0.3,0,0.2],
- ["まぐろ",115,26.4,1.4,0.1,0,0.1],["ぶり",222,21.4,17.6,0.3,0,0.1],["あじ",112,19.7,4.5,0.1,0,0.3],
- ["えび",77,18.4,0.3,0.1,0,0.4],["いか",76,17.9,0.8,0.1,0,0.5],["たこ",70,16.4,0.7,0.1,0,0.6],
- ["卵",142,12.2,10.2,0.4,0,0.4],["木綿豆腐",73,7.0,4.9,1.5,1.1,0],["絹ごし豆腐",56,5.3,3.5,2.0,0.9,0],
- ["納豆",184,16.5,10.0,12.1,6.7,0],["枝豆",125,11.7,6.2,8.8,5.0,0],
- ["紅茶",1,0.1,0,0.1,0,0],["コーヒー",4,0.2,0,0.7,0,0],["普通牛乳",61,3.3,3.8,4.8,0,0.1],["低脂肪牛乳",42,3.8,1.0,5.5,0,0.2],["生クリーム",404,1.9,43.0,6.5,0,0.1],["ヨーグルト",56,3.6,3.0,4.9,0,0.1],["プロセスチーズ",313,22.7,26.0,1.3,0,2.8],
- ["ブロッコリー",37,5.4,0.6,6.6,5.1,0],["キャベツ",23,1.3,0.2,5.2,1.8,0],["レタス",11,0.6,0.1,2.8,1.1,0],
- ["トマト",20,0.7,0.1,4.7,1.0,0],["きゅうり",13,1.0,0.1,3.0,1.1,0],["にんじん",35,0.7,0.2,9.3,2.8,0.1],
- ["玉ねぎ",33,1.0,0.1,8.4,1.5,0],["ほうれん草",18,2.2,0.4,3.1,2.8,0.2],["小松菜",13,1.5,0.2,2.4,1.9,0.1],
- ["じゃがいも",59,1.8,0.1,17.3,8.9,0],["さつまいも",127,0.9,0.5,33.1,2.8,0.1],["かぼちゃ",78,1.9,0.3,20.6,3.5,0],
- ["なす",18,1.1,0.1,5.1,2.2,0],["ピーマン",20,0.9,0.2,5.1,2.3,0],["もやし",15,1.8,0.1,2.6,1.3,0],
- ["バナナ",93,1.1,0.2,22.5,1.1,0],["りんご",53,0.1,0.2,15.5,1.4,0],["みかん",49,0.7,0.1,12.0,1.0,0],
- ["いちご",31,0.9,0.1,8.5,1.4,0],["キウイ",51,1.0,0.2,13.4,2.6,0],
- ["オリーブ油",894,0,100,0,0,0],["サラダ油",886,0,100,0,0,0],["ごま油",890,0,100,0,0,0],
- ["マヨネーズ",668,1.4,76.0,3.6,0,1.8],["ケチャップ",104,1.6,0.2,27.4,1.7,3.1],["しょうゆ",76,7.7,0,7.9,0,14.5],
- ["みそ",182,12.5,6.0,26.3,4.9,12.4],["砂糖",391,0,0,99.3,0,0],["アップルパイ",294,4.0,17.5,32.8,1.2,0.4]
-];
+// [official name, kcal, protein, fat, carbohydrate, fiber, salt, MEXT food number]
+const FOOD_DB=MEXT_FOODS.map(([id,name,k,p,f,c,fi,s])=>[name,k,p,f,c,fi,s,id]);
 function norm(s=""){return s.replace(/[\s　]/g,"").toLowerCase()}
 function canonicalFood(name=""){
  const n=norm(name);
@@ -33,12 +11,17 @@ function canonicalFood(name=""){
  if(/コーヒー|珈琲/.test(n)) return "コーヒー";
  return name;
 }
-function findFood(name){let n=norm(canonicalFood(name)),hit=FOOD_DB.find(x=>n.includes(norm(x[0]))||norm(x[0]).includes(n));return hit||null}
+function findFood(name){
+ const n=norm(canonicalFood(name));
+ const hits=FOOD_DB.filter(x=>{const m=norm(x[0]);return n===m||m.includes(n)||n.includes(m)});
+ if(!hits.length)return null;
+ return hits.sort((a,b)=>{const an=norm(a[0]),bn=norm(b[0]);const ae=an===n?0:1,be=bn===n?0:1;return ae-be||an.length-bn.length})[0];
+}
 function nutrients(items){
  let total={calories:0,protein_g:0,fat_g:0,carbohydrate_g:0,fiber_g:0,salt_g:0},mapped=[],unmapped=[];
  for(const item of items){
   const food=findFood(item.food_name); const g=Number(item.estimated_amount_g)||0;
-  if(food&&g>0){let k=g/100;let v={calories:food[1]*k,protein_g:food[2]*k,fat_g:food[3]*k,carbohydrate_g:food[4]*k,fiber_g:(food[5]||0)*k,salt_g:(food[6]||0)*k};Object.keys(total).forEach(x=>total[x]+=v[x]);mapped.push({...item,nutrition_source:"local_food_db",...Object.fromEntries(Object.entries(v).map(([k,v])=>[k,Math.round(v*10)/10]))})}
+  if(food&&g>0){let k=g/100;let v={calories:food[1]*k,protein_g:food[2]*k,fat_g:food[3]*k,carbohydrate_g:food[4]*k,fiber_g:(food[5]||0)*k,salt_g:(food[6]||0)*k};Object.keys(total).forEach(x=>total[x]+=v[x]);mapped.push({...item,nutrition_source:"mext_food_master",food_number:food[7],...Object.fromEntries(Object.entries(v).map(([k,v])=>[k,Math.round(v*10)/10]))})}
   else {mapped.push({...item,nutrition_source:"unmapped"});unmapped.push(item.food_name)}
  }
  Object.keys(total).forEach(x=>total[x]=Math.round(total[x]*10)/10);return{items:mapped,total,unmapped,complete:unmapped.length===0}
@@ -69,6 +52,6 @@ JSONのみ:
   // Never present a partial sum as the meal total. If any detected food is
   // unmapped, nutrition is intentionally withheld until the master/mapping is completed.
   const safeNutrition=calculated.complete?calculated.total:null;
-  return res.status(200).json({...vision,items:calculated.items,nutrition:safeNutrition,calculation_note:calculated.complete?"栄養値は食品成分表ベースの100g値×推定重量で計算しています。":"未対応食品（"+calculated.unmapped.join("、")+"）があるため、表示合計は暫定値です。",nutrition_complete:calculated.complete,unmapped_items:calculated.unmapped,source_label:"日本食品標準成分表（八訂）増補2023年（2026年正誤表対応方針）"});
+  return res.status(200).json({...vision,items:calculated.items,nutrition:safeNutrition,calculation_note:calculated.complete?"栄養値は食品成分表ベースの100g値×推定重量で計算しています。":"未対応食品（"+calculated.unmapped.join("、")+"）があるため、表示合計は暫定値です。",nutrition_complete:calculated.complete,unmapped_items:calculated.unmapped,source_label:"日本食品標準成分表（八訂）増補2023年・2026-03-27版"});
  }catch(e){return res.status(500).json({error:"Photo analysis failed",detail:e?.message||String(e)})}
 }
