@@ -107,6 +107,8 @@ function deterministicCanonical(item={}){
  // Only deterministic rules that express a semantic category, not a DB row.
  if(/クッキー|ビスケット|サブレ/.test(name))return {canonical_name:"ソフトビスケット",canonical_category:"菓子類",normalization_source:"rule",normalization_confidence:0.9};
  if(/アップル.*パイ|りんご.*パイ|リンゴ.*パイ/.test(name))return {canonical_name:"アップルパイ",canonical_category:"菓子類",normalization_source:"rule",normalization_confidence:0.95};
+ const context=norm([name,item.assumption,(item.alternatives||[]).join(" "),item.food_category].join(" "));
+ if(/ケーキ|焼き菓子|タルト|パイ/.test(name)&&/りんご|リンゴ|アップル/.test(context))return {canonical_name:"アップルパイ",canonical_category:"菓子類",normalization_source:"rule",normalization_confidence:0.93};
  return null;
 }
 async function normalizeItems(client,items=[],normalizationCache={}){
@@ -131,7 +133,7 @@ async function normalizeItems(client,items=[],normalizationCache={}){
 ルール:
 - 見た目の表現、料理名、形状名を一般的な食品名へ変換する。
 - 複合料理でも、入力itemがすでに一つの食品として妥当なら無理に分解しない。
-- 「フルーツ系パイ/タルト」でりんごが最有力なら「アップルパイ」のように、検索可能な一般食品名にする。
+- 「フルーツ系パイ/タルト」「ケーキ」のような汎用名でも、alternatives・assumption・カテゴリにりんご/アップルの根拠があれば「アップルパイ」のように、より具体的で検索可能な一般食品名にする。具体的な食品を「ケーキ」のような上位概念へ丸めない。
 - 「豚肉」「まいたけ」「炒め油」のように栄養計算単位として扱える名称にする。
 - 食品でない物は is_food=false。飾りで通常食べない物は is_garnish=true。
 - 不明な場合も架空の固有商品名を作らず、最も一般的な食品名にする。
@@ -190,15 +192,30 @@ JSONのみ:
   }
   if(vision.items?.length){
     const nonFood=/ナプキン|ティッシュ|皿|プレート|カップ|ポット|フォーク|スプーン|ナイフ|箸|ストロー|包装|包み紙|容器|トレー|コースター/i;
-    const unusedAccessory=/砂糖スティック|角砂糖|シュガー|ミルクピッチャー|コーヒーフレッシュ|ガムシロップ|シロップ.*小袋|ソース.*小袋/i;
+    const unusedAccessory=/ガムシロップ|シロップ.*小袋|ソース.*小袋/i;
     vision.items=vision.items.filter(x=>{
       const name=String(x.food_name||"");
       const method=String(x.cooking_method||"");
       const edible=/クッキー|ビスケット|サブレ|ケーキ|パイ|タルト|パン|ごはん|米|肉|魚|卵|野菜|果物|サラダ|麺|紅茶|コーヒー|牛乳|ミルク|ヨーグルト|チーズ/i;
       if(nonFood.test(name)&&!edible.test(name))return false;
-      if(/未使用|使用していない|添え物/.test(method))return false;
+      if(/未使用|使用していない|添え物/.test(method)&&!/砂糖|シュガー|ミルク|牛乳|クリーム/.test(name))return false;
       if(unusedAccessory.test(name)&&!/使用済|投入|混ぜ|加え/.test(method))return false;
       return true;
+    });
+  }
+  if(vision.items?.length){
+    // Visible sugar/milk are user decisions: keep them in the list so × can mean "didn't consume".
+    vision.items=vision.items.map(item=>{
+      const name=String(item.food_name||"");
+      if(/砂糖スティック|角砂糖|スティックシュガー|シュガー/.test(name)){
+        const g=Number(item.estimated_amount_g);
+        return {...item,food_name:"砂糖",nutrition_search_name:"砂糖",estimated_amount_g:g>0?g:3,cooking_method:"使用不明（添え物）",optional_consumption:true};
+      }
+      if(/ミルクピッチャー|コーヒーフレッシュ|ミルクまたはクリーム|牛乳またはミルク/.test(name)){
+        const g=Number(item.estimated_amount_g);
+        return {...item,food_name:"牛乳またはミルク",nutrition_search_name:"普通牛乳",estimated_amount_g:g>0?g:15,cooking_method:"使用不明（添え物）",optional_consumption:true};
+      }
+      return item;
     });
   }
   if(vision.items?.length){
