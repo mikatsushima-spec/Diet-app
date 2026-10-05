@@ -78,3 +78,12 @@ nav button:first-child{color:#e95e8d}
 .confirm-box{display:block!important;background:#fff9e8;border:1px solid #f4df9d;border-radius:11px;padding:8px!important;margin:6px 34px 4px 0}
 .confirm-box small{display:block!important;margin:0 0 5px!important;color:#80672c!important}.confirm-box select{width:100%;padding:8px;border:1px solid #ead69b;border-radius:9px;background:white;color:#4d4145}
 .amount-correct{display:block!important;border:0!important;padding:4px 34px 0 0!important}.amount-correct label{margin:0!important;font-size:11px!important;color:#7e6d73!important}.amount-correct input{display:inline-block!important;width:68px!important;margin:0 4px!important;padding:6px 7px!important;font-size:14px!important}
+
+/* Compact meal review rows */
+.item-actions{margin-left:auto!important;display:flex!important;align-items:center!important;justify-content:flex-end!important;gap:8px!important;flex:0 0 auto!important;border:0!important;padding:0 34px 0 6px!important}
+.item-actions select{max-width:120px;min-width:86px;padding:7px 24px 7px 8px;border:1px solid #eadfe2;border-radius:10px;background:#fff;color:#55484d;font-size:12px}
+.amount-inline{display:flex!important;align-items:center!important;gap:3px!important;margin:0!important;color:#76676c!important;font-size:12px!important}
+.amount-inline input{width:58px!important;margin:0!important;padding:7px 6px!important;border-radius:10px!important;font-size:14px!important}
+.amount-inline small{font-size:11px!important}
+.foodrow{align-items:center!important}
+.foodrow>div:first-of-type{min-width:0!important;flex:1 1 auto!important}
