@@ -47,4 +47,36 @@ function saveScan(){let m={type:scan.type,name:scan.name||'食事',cal:+scan.cal
 return <section><header><h1>{isToday?'今日':'食事記録'}</h1><div className="date-picker"><label className="date-control"><span>{dateLabel} ▾</span><input aria-label="日付を選択" type="date" value={d} max={today()} onChange={e=>e.target.value&&setSelectedDate(e.target.value)}/></label>{!isToday&&<button type="button" onClick={()=>setSelectedDate(today())}>今日へ</button>}</div></header><div className="hero"><small>今日の摂取</small><strong>{displayNum(sum.cal)} <i>/ {displayNum(c.cal)} kcal</i></strong><p>あと <b>{displayNum(Math.max(0,c.cal-sum.cal))} kcal</b> が目安</p></div><div className="card nutrients"><Bar n="たんぱく質" v={sum.p} g={goals.p}/><Bar n="脂質" v={sum.f} g={goals.f}/><Bar n="炭水化物" v={sum.c} g={goals.c}/></div><div className="advice"><b>今日のアドバイス</b><p>{sum.p<goals.p*.7?'たんぱく質がまだ少なめです。次の食事は魚・鶏肉・豆腐などを意識すると整えやすいです。':'今のところ良いペースです。残りの食事もバランスよく。'}</p></div>{['朝食','昼食','夕食','間食'].map(t=><div className="card meal" key={t}><div className="mealhead"><b>{t}</b><button onClick={()=>add(t)}><Camera/>写真</button><input id={'photo-'+t} className="hidden" type="file" accept="image/*" onChange={e=>picked(t,e)}/></div>{ms.filter(x=>x.type===t).map((m,i)=><div className="food" key={i}><span>{m.name}</span><b>{m.cal} kcal</b><small>たんぱく質 {m.p}g　脂質 {m.f}g　炭水化物 {m.c}g</small></div>)}</div>)}{scan&&<div className="modal"><div className="sheet">{scan.url&&<img className="preview" src={scan.url} onError={e=>{e.currentTarget.style.display="none"}}/>}<h2>{scan.type}を記録</h2><p className="muted">{analyzing?'写真から料理と量を解析しています…':scan.error||'AIが写真から料理と推定量を読み取りました。内容を確認し、必要なら修正してください。'}</p>{scan.items?.length>0&&<div className="detected">{scan.items.map((x,i)=><div key={i} className="detected-row"><b>{x.food_name}</b><span>約 {x.estimated_amount_g}g ・ {x.cooking_method||'調理法不明'} ・ 確信度 {Math.round((x.confidence||0)*100)}%</span>{/ドレッシング|ソース/.test(x.food_name)&&<select value={dressing} onChange={e=>chooseDressing(i,e.target.value)}><option value="">種類を選ぶ</option><option>オリーブオイル</option><option>ごまドレッシング</option><option>マヨネーズ</option><option>ポン酢</option><option>ケチャップ</option><option>醤油</option><option>中濃ソース</option><option>なし</option></select>}<button type="button" className="remove-item" aria-label={x.food_name+'を削除'} title="食べていないので削除" onClick={()=>removeDetectedItem(i)}>×</button></div>)}{scan.notes?.map((n,i)=><small key={i}>※ {n}</small>)}{scan.calculation_note&&<small>※ {scan.calculation_note}</small>}{scan.needs_confirmation?.map((n,i)=><small key={'q'+i}>確認するとより正確：{n}</small>)}</div>}<label>料理名<input value={scan.name} onChange={e=>setScan({...scan,name:e.target.value})}/></label><div className="grid2"><label>カロリー<input inputMode="decimal" value={scan.cal} onChange={e=>setScan({...scan,cal:e.target.value})}/></label><label>たんぱく質 g<input inputMode="decimal" value={scan.p} onChange={e=>setScan({...scan,p:e.target.value})}/></label><label>脂質 g<input inputMode="decimal" value={scan.f} onChange={e=>setScan({...scan,f:e.target.value})}/></label><label>炭水化物 g<input inputMode="decimal" value={scan.c} onChange={e=>setScan({...scan,c:e.target.value})}/></label></div><button className="primary" onClick={saveScan}>記録する</button><button className="cancel" onClick={closeScan}>キャンセル</button></div></div>}</section>}
 function displayNum(v,digits=1){const n=Number(v);if(!Number.isFinite(n))return 0;return Number(n.toFixed(digits)).toLocaleString('ja-JP',{maximumFractionDigits:digits})}
 function Bar({n,v,g}){return <div><div className="barlabel"><b>{n}</b><span>{displayNum(v)} / {displayNum(g)}g</span></div><div className="bar"><i style={{width:Math.min(100,v/g*100)+'%'}}/></div></div>}
-function Weight({s,setS}){let w=s.weights.slice(-12),latest=w.at(-1)?.weight||s.profile.weight;function add(){let x=+(prompt('今日の体重 (kg)',latest)||0);if(x)setS({...s,weights:[...s.weights.filter(a=>a.date!==today()),{date:today(),weight:x}]})}return <section><header><h1>体重</h1></header><div className="hero"><small>現在</small><strong>{latest} <i>kg</i></strong><p>目標まで <b>{Math.max(0,latest-s.profile.targetWeight).toFixed(1)} kg</b></p></div><button className="primary" onClick={add}>今日の体重を入力</button><div className="card"><h3>最近の記録</h3>{w.length?w.slice().reverse().map(x=><div className="weightrow"><span>{x.date}</span><b>{x.weight} kg</b></div>):<p>まだ記録がありません</p>}</div></section>}createRoot(document.getElementById('root')).render(<App/>);
+function Weight({s,setS}){
+ const all=[...(s.weights||[])].sort((a,b)=>a.date.localeCompare(b.date));
+ const latest=all.at(-1)?.weight||s.profile.weight;
+ const target=Number(s.profile.targetWeight)||0;
+ const periods=[30,90,180,0];
+ const [period,setPeriod]=useState(90);
+ function add(){let x=+(prompt('今日の体重 (kg)',latest)||0);if(x)setS({...s,weights:[...(s.weights||[]).filter(a=>a.date!==today()),{date:today(),weight:x}]})}
+ const cutoff=period?new Date(Date.now()-(period-1)*86400000):null;
+ const data=all.filter(x=>!cutoff||new Date(x.date+'T00:00:00')>=cutoff);
+ const chart=data.length?data:[{date:today(),weight:latest}];
+ const vals=chart.map(x=>Number(x.weight)).filter(Number.isFinite);
+ const min=Math.min(...vals,target)-1,max=Math.max(...vals,target)+1,range=Math.max(1,max-min);
+ const pts=chart.map((x,i)=>({x:chart.length===1?50:5+i*90/(chart.length-1),y:8+(max-Number(x.weight))/range*64,...x}));
+ const targetY=8+(max-target)/range*64;
+ return <section><header><h1>体重</h1></header>
+  <div className="hero"><small>現在</small><strong>{displayNum(latest)} <i>kg</i></strong><p>目標 {displayNum(target)} kg ／ あと <b>{displayNum(Math.max(0,latest-target))} kg</b></p></div>
+  <button className="primary" onClick={add}>今日の体重を入力</button>
+  <div className="card weight-chart-card"><div className="chart-head"><div><h3>体重の推移</h3><small>実測値と目標体重</small></div><div className="period-tabs">{periods.map(p=><button key={p} className={period===p?'active':''} onClick={()=>setPeriod(p)}>{p===30?'1か月':p===90?'3か月':p===180?'6か月':'全期間'}</button>)}</div></div>
+   <div className="weight-chart">
+    <div className="target-label" style={{top:targetY+'%'}}>目標 {displayNum(target)}kg</div>
+    <svg viewBox="0 0 100 82" preserveAspectRatio="none" aria-label="体重推移グラフ">
+     {[8,26,44,62,80].map(y=><line key={y} x1="5" x2="95" y1={y} y2={y} className="gridline"/>)}
+     <line x1="5" x2="95" y1={targetY} y2={targetY} className="target-line"/>
+     {pts.length>1&&<polyline points={pts.map(p=>p.x+','+p.y).join(' ')} className="weight-line"/>}
+     {pts.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r="1.8" className="weight-dot"/>)}
+    </svg>
+    <div className="chart-axis"><span>{chart[0]?.date?.slice(5).replace('-','/')}</span><span>{chart.at(-1)?.date?.slice(5).replace('-','/')}</span></div>
+   </div>
+   <div className="weight-summary"><div><small>現在</small><b>{displayNum(latest)} kg</b></div><div><small>目標</small><b>{displayNum(target)} kg</b></div><div><small>差</small><b>{displayNum(latest-target)} kg</b></div></div>
+  </div>
+  <div className="card"><h3>最近の記録</h3>{all.length?all.slice(-12).reverse().map(x=><div className="weightrow" key={x.date}><span>{x.date}</span><b>{displayNum(x.weight)} kg</b></div>):<p>まだ記録がありません</p>}</div>
+ </section>
+}createRoot(document.getElementById('root')).render(<App/>);
