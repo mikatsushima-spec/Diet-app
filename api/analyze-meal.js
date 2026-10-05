@@ -43,22 +43,46 @@ function scoreFood(query,row){
  let score=0;for(const t of qt){if(t.length<2)continue;if(nt.some(x=>x.includes(t)||t.includes(x)))score+=80}
  return score;
 }
+function bestFood(query,minScore=650){
+ const ranked=FOOD_DB.map(x=>[scoreFood(query,x),x]).sort((a,b)=>b[0]-a[0]);
+ return ranked[0]?.[0]>=minScore?ranked[0][1]:null;
+}
 function findFood(name){
  const alias=directAlias(name);
- if(alias){const hit=FOOD_DB.map(x=>[scoreFood(alias,x),x]).sort((a,b)=>b[0]-a[0])[0];if(hit?.[0]>=80)return hit[1]}
- let ranked=FOOD_DB.map(x=>[scoreFood(name,x),x]).filter(x=>x[0]>0).sort((a,b)=>b[0]-a[0]);
- if(ranked[0]?.[0]>=80)return ranked[0][1];
+ if(alias){
+   const exact=FOOD_DB.find(x=>norm(x[0])===norm(alias));
+   if(exact)return exact;
+   const hit=bestFood(alias,650);
+   if(hit)return hit;
+ }
+ const direct=bestFood(name,650);
+ if(direct)return direct;
  const rule=FOOD_CATEGORY_RULES.find(r=>r.re.test(name||""));
- if(rule)for(const candidate of rule.candidates){const hit=FOOD_DB.map(x=>[scoreFood(candidate,x),x]).sort((a,b)=>b[0]-a[0])[0];if(hit?.[0]>=80)return hit[1]}
+ if(rule)for(const candidate of rule.candidates){
+   const exact=FOOD_DB.find(x=>norm(x[0])===norm(candidate));
+   if(exact)return exact;
+   const hit=bestFood(candidate,650);
+   if(hit)return hit;
+ }
  if(/クッキー|ビスケット|サブレ/.test(name||""))return ["ソフトビスケット",522,5.7,27.6,62.6,1.4,0.6,"cookie-fallback"];
  return null;
+}
+function nutritionIsPlausible(food,g){
+ if(!food||g<=0)return false;
+ const kcal=Number(food[1]),p=Number(food[2]),fat=Number(food[3]),carb=Number(food[4]);
+ if(![kcal,p,fat,carb].every(Number.isFinite))return false;
+ // Per-100g physical sanity checks. Reject corrupt/mismatched rows.
+ if(kcal<0||kcal>950||p<0||p>100||fat<0||fat>100||carb<0||carb>100)return false;
+ const macroKcal=p*4+fat*9+carb*4;
+ if(kcal>50&&macroKcal>0&&(macroKcal/kcal<0.35||macroKcal/kcal>1.65))return false;
+ return true;
 }
 function nutrients(items){
  let total={calories:0,protein_g:0,fat_g:0,carbohydrate_g:0,fiber_g:0,salt_g:0},mapped=[],unmapped=[];
  for(const item of items){
   const food=findFood(item.nutrition_search_name||item.food_name); const g=Number(item.estimated_amount_g)||0;
   if(g<=0||/未使用/.test(item.cooking_method||"")){mapped.push({...item,estimated_amount_g:0,nutrition_source:"not_consumed"});continue}
-  if(food){let k=g/100;let v={calories:food[1]*k,protein_g:food[2]*k,fat_g:food[3]*k,carbohydrate_g:food[4]*k,fiber_g:(food[5]||0)*k,salt_g:(food[6]||0)*k};Object.keys(total).forEach(x=>total[x]+=v[x]);mapped.push({...item,nutrition_source:"mext_food_master",food_number:food[7],...Object.fromEntries(Object.entries(v).map(([k,v])=>[k,Math.round(v*10)/10]))})}
+  if(food&&nutritionIsPlausible(food,g)){let k=g/100;let v={calories:food[1]*k,protein_g:food[2]*k,fat_g:food[3]*k,carbohydrate_g:food[4]*k,fiber_g:(food[5]||0)*k,salt_g:(food[6]||0)*k};Object.keys(total).forEach(x=>total[x]+=v[x]);mapped.push({...item,nutrition_source:"mext_food_master",food_number:food[7],...Object.fromEntries(Object.entries(v).map(([k,v])=>[k,Math.round(v*10)/10]))})}
   else if(/ミント|パセリ|ハーブ|飾り|添え葉/.test(item.food_name||"")&&g<=5){mapped.push({...item,nutrition_source:"garnish_ignored"});}
   else {mapped.push({...item,nutrition_source:"unmapped"});unmapped.push(item.food_name)}
  }
@@ -150,7 +174,7 @@ JSONのみ:
       try{
         const cached=food_cache[cacheKey]||food_cache[searchName]||food_cache[displayName];
         let hit=null,source="local_web_cache";
-        if(cached&&cached.basis==="per_100g"&&Number.isFinite(Number(cached.calories))){
+        if(cached&&cached.basis==="per_100g"&&Number.isFinite(Number(cached.calories))&&nutritionIsPlausible(["cached",cached.calories,cached.protein_g||0,cached.fat_g||0,cached.carbohydrate_g||0],100)){
           hit=cached;
         }else{
           const q=await client.responses.create({
@@ -164,7 +188,7 @@ JSONのみ:
           const x=txt.indexOf("{"),y=txt.lastIndexOf("}");
           if(x>=0&&y>x){
             const candidate=JSON.parse(txt.slice(x,y+1));
-            if(!candidate.not_found&&candidate.basis==="per_100g"&&Number.isFinite(Number(candidate.calories))&&candidate.source_name&&candidate.source_url){
+            if(!candidate.not_found&&candidate.basis==="per_100g"&&Number.isFinite(Number(candidate.calories))&&candidate.source_name&&candidate.source_url&&nutritionIsPlausible(["web",candidate.calories,candidate.protein_g||0,candidate.fat_g||0,candidate.carbohydrate_g||0],100)){
               hit=candidate; source="web_search";
             }
           }
@@ -189,7 +213,9 @@ JSONのみ:
   }
   // Show the resolved portion even when some foods remain unresolved; completeness is reported separately.
   const meaningful=calculated.items.some(x=>["mext_food_master","web_search","local_web_cache"].includes(x.nutrition_source)&&Number(x.estimated_amount_g)>0);
-  const safeNutrition=meaningful?calculated.total:null;
+  const totalWeight=calculated.items.reduce((s,x)=>s+(Number(x.estimated_amount_g)||0),0);
+  const totalPlausible=totalWeight>0&&calculated.total.calories>=0&&calculated.total.calories<=totalWeight*9.5&&calculated.total.protein_g<=totalWeight&&calculated.total.fat_g<=totalWeight&&calculated.total.carbohydrate_g<=totalWeight*1.1;
+  const safeNutrition=meaningful&&totalPlausible?calculated.total:null;
   return res.status(200).json({...vision,items:calculated.items,nutrition:safeNutrition,calculation_note:calculated.complete?"栄養値は食品成分表ベースの100g値×推定重量で計算しています。":"未対応食品（"+calculated.unmapped.join("、")+"）があるため、表示合計は暫定値です。",nutrition_complete:calculated.complete,unmapped_items:calculated.unmapped,web_fallbacks,source_label:"日本食品標準成分表（八訂）増補2023年・2026-03-27版"});
  }catch(e){return res.status(500).json({error:"Photo analysis failed",detail:e?.message||String(e)})}
 }
