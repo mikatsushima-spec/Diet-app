@@ -42,7 +42,8 @@ function nutrients(items){
  let total={calories:0,protein_g:0,fat_g:0,carbohydrate_g:0,fiber_g:0,salt_g:0},mapped=[],unmapped=[];
  for(const item of items){
   const food=findFood(item.food_name); const g=Number(item.estimated_amount_g)||0;
-  if(food&&g>0){let k=g/100;let v={calories:food[1]*k,protein_g:food[2]*k,fat_g:food[3]*k,carbohydrate_g:food[4]*k,fiber_g:(food[5]||0)*k,salt_g:(food[6]||0)*k};Object.keys(total).forEach(x=>total[x]+=v[x]);mapped.push({...item,nutrition_source:"mext_food_master",food_number:food[7],...Object.fromEntries(Object.entries(v).map(([k,v])=>[k,Math.round(v*10)/10]))})}
+  if(g<=0||/未使用/.test(item.cooking_method||"")){mapped.push({...item,estimated_amount_g:0,nutrition_source:"not_consumed"});continue}
+  if(food){let k=g/100;let v={calories:food[1]*k,protein_g:food[2]*k,fat_g:food[3]*k,carbohydrate_g:food[4]*k,fiber_g:(food[5]||0)*k,salt_g:(food[6]||0)*k};Object.keys(total).forEach(x=>total[x]+=v[x]);mapped.push({...item,nutrition_source:"mext_food_master",food_number:food[7],...Object.fromEntries(Object.entries(v).map(([k,v])=>[k,Math.round(v*10)/10]))})}
   else {mapped.push({...item,nutrition_source:"unmapped"});unmapped.push(item.food_name)}
  }
  Object.keys(total).forEach(x=>total[x]=Math.round(total[x]*10)/10);return{items:mapped,total,unmapped,complete:unmapped.length===0}
@@ -72,6 +73,17 @@ JSONのみ:
     const response=await client.responses.create({model:process.env.OPENAI_VISION_MODEL||"gpt-5.4-mini",input:[{role:"user",content:[{type:"input_text",text:prompt},{type:"input_image",image_url:image,detail:"high"}]}]});
     let raw=(response.output_text||"").trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,"");
     try{vision=JSON.parse(raw)}catch(parseErr){const start=raw.indexOf("{"),end=raw.lastIndexOf("}");if(start<0||end<=start)throw new Error("AI response was not valid JSON");vision=JSON.parse(raw.slice(start,end+1))}
+  }
+  if(vision.items?.length){
+    const pastry=vision.items.filter(x=>/焼き菓子の生地|パイ.*生地|タルト.*生地|りんごのフィリング|リンゴ.*フィリング|焼き菓子表面の卵液|照り用つや出し/.test(x.food_name));
+    const hasApple=pastry.some(x=>/りんご|リンゴ/.test(x.food_name));
+    const hasCrust=pastry.some(x=>/生地/.test(x.food_name));
+    if(hasApple&&hasCrust){
+      const totalG=pastry.reduce((s,x)=>s+(Number(x.estimated_amount_g)||0),0);
+      const remove=new Set(pastry);
+      vision.items=[...vision.items.filter(x=>!remove.has(x)),{food_name:"アップルパイ",estimated_amount_g:Math.round(totalG),amount_min_g:null,amount_max_g:null,cooking_method:"焼成",confidence:Math.min(...pastry.map(x=>Number(x.confidence)||0.7)),assumption:"写真で確認できたパイ生地・りんごフィリング・表面の卵液を完成品として統合",alternatives:[]}];
+      vision.dish_name=/紅茶/.test(vision.dish_name||"")?"紅茶とアップルパイ":"アップルパイ";
+    }
   }
   if(vision.items?.length){const tea=vision.items.filter(x=>/紅茶/.test(x.food_name));const milk=vision.items.filter(x=>/ミルク|牛乳|クリーム/.test(x.food_name));if(tea.length&&milk.length){vision.dish_name="ミルクティー";}}
   if(vision.items?.length){
