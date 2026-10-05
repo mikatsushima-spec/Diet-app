@@ -87,14 +87,14 @@ JSONのみ:
     });
   }
   if(vision.items?.length){
-    const pastry=vision.items.filter(x=>/焼き菓子の生地|ケーキの生地|スポンジ.*生地|パイ.*生地|タルト.*生地|りんご.*フィリング|リンゴ.*フィリング|りんご系フィリング|焼き菓子表面の卵液|照り用つや出し|グレーズ|砂糖がけ/.test(x.food_name));
-    const hasApple=pastry.some(x=>/りんご|リンゴ/.test(x.food_name));
-    const hasCrust=pastry.some(x=>/生地/.test(x.food_name));
+    const pastry=vision.items.filter(x=>/焼き菓子の生地|ケーキの生地|スポンジ.*生地|パイ.*生地|タルト.*生地|りんご.*フィリング|リンゴ.*フィリング|りんご系フィリング|フィリング.*トッピング|焼き菓子表面の卵液|照り用つや出し|グレーズ|砂糖がけ/.test(x.food_name));
+    const hasApple=pastry.some(x=>/りんご|リンゴ|アップル/.test(x.food_name));
+    const hasCrust=pastry.some(x=>/生地|スポンジ|パイ|タルト/.test(x.food_name));
     if(hasApple&&hasCrust){
       const totalG=pastry.reduce((s,x)=>s+(Number(x.estimated_amount_g)||0),0);
       const remove=new Set(pastry);
-      vision.items=[...vision.items.filter(x=>!remove.has(x)),{food_name:"アップルパイ",estimated_amount_g:Math.round(totalG),amount_min_g:null,amount_max_g:null,cooking_method:"焼成",confidence:Math.min(...pastry.map(x=>Number(x.confidence)||0.7)),assumption:"写真で確認できたパイ生地・りんごフィリング・表面の卵液を完成品として統合",alternatives:[]}];
-      vision.dish_name=/紅茶/.test(vision.dish_name||"")?"紅茶とアップルパイ":"アップルパイ";
+      vision.items=[...vision.items.filter(x=>!remove.has(x)),{food_name:"アップルパイ",estimated_amount_g:Math.round(totalG),amount_min_g:null,amount_max_g:null,cooking_method:"焼成",confidence:Math.min(...pastry.map(x=>Number(x.confidence)||0.7)),assumption:"りんご系の焼き菓子を完成品として統合",alternatives:[]}];
+      vision.dish_name=/紅茶/.test(vision.dish_name||"")?"ミルクティーとアップルパイ":"アップルパイ";
     }
   }
   if(vision.items?.length){const tea=vision.items.filter(x=>/紅茶/.test(x.food_name));const milk=vision.items.filter(x=>/ミルク|牛乳|クリーム/.test(x.food_name));if(tea.length&&milk.length){vision.dish_name="ミルクティー";}}
