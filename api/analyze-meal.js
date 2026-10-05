@@ -51,7 +51,8 @@ export default async function handler(req,res){
  if(req.method!=="POST")return res.status(405).json({error:"Method not allowed"});
  if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:"OPENAI_API_KEY is not configured"});
  try{
-  const {image,food_cache={},overrides={}}=req.body||{};if(!image?.startsWith("data:image/"))return res.status(400).json({error:"Image is required"});
+  const {image,food_cache={},overrides={},items:providedItems,dish_name:providedDishName}=req.body||{};
+  if(!providedItems&&!image?.startsWith("data:image/"))return res.status(400).json({error:"Image is required"});
   const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY});
   const prompt=`日本の食事写真を栄養計算用に分析してください。皿単位の料理名だけでなく、栄養計算できる構成要素へ分解します。
 手順:
@@ -64,15 +65,19 @@ export default async function handler(req,res){
 7. カロリーや栄養値は絶対に生成しない。食品と重量だけ返す。\n8. 砂糖やシロップは写真だけで確認できない場合、勝手に加えず needs_user_confirmation に「砂糖・シロップを入れたか」を入れる。ミルクも使用量が不確実なら範囲を広くし確認候補にする。
 JSONのみ:
 {"dish_name":"鮭定食","items":[{"food_name":"白ごはん","estimated_amount_g":150,"amount_min_g":130,"amount_max_g":180,"cooking_method":"炊飯","confidence":0.85,"assumption":"茶碗1杯程度","alternatives":[]}],"notes":["写真だけでは判別困難な点"],"needs_user_confirmation":["確認すると精度が上がる項目"]}`;
-  const response=await client.responses.create({model:process.env.OPENAI_VISION_MODEL||"gpt-5.4-mini",input:[{role:"user",content:[{type:"input_text",text:prompt},{type:"input_image",image_url:image,detail:"high"}]}]});
-  let raw=(response.output_text||"").trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,"");
   let vision;
-  try{vision=JSON.parse(raw)}catch(parseErr){const start=raw.indexOf("{"),end=raw.lastIndexOf("}");if(start<0||end<=start)throw new Error("AI response was not valid JSON");vision=JSON.parse(raw.slice(start,end+1))}
+  if(providedItems){
+    vision={dish_name:providedDishName||"食事",items:providedItems,notes:[],needs_user_confirmation:[]};
+  }else{
+    const response=await client.responses.create({model:process.env.OPENAI_VISION_MODEL||"gpt-5.4-mini",input:[{role:"user",content:[{type:"input_text",text:prompt},{type:"input_image",image_url:image,detail:"high"}]}]});
+    let raw=(response.output_text||"").trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,"");
+    try{vision=JSON.parse(raw)}catch(parseErr){const start=raw.indexOf("{"),end=raw.lastIndexOf("}");if(start<0||end<=start)throw new Error("AI response was not valid JSON");vision=JSON.parse(raw.slice(start,end+1))}
+  }
   if(vision.items?.length){const tea=vision.items.filter(x=>/紅茶/.test(x.food_name));const milk=vision.items.filter(x=>/ミルク|牛乳|クリーム/.test(x.food_name));if(tea.length&&milk.length){vision.dish_name="ミルクティー";}}
   if(vision.items?.length){
     vision.items=vision.items.map((item,i)=>{
       const key=String(i);
-      return overrides[key]?.food_name?{...item,food_name:overrides[key].food_name}:item;
+      if(overrides[key]?.food_name==="なし")return {...item,estimated_amount_g:0,food_name:"なし"}; return overrides[key]?.food_name?{...item,food_name:overrides[key].food_name}:item;
     });
   }
   let calculated=nutrients(vision.items||[]);
