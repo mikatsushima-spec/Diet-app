@@ -19,11 +19,13 @@ function canonicalFood(name=""){
    return "じゃがいも 塊茎 皮なし 生";
  }
  if(/葉野菜サラダ|グリーンサラダ|野菜サラダ|サラダ/.test(n)) return "レタス 土耕栽培 結球葉 生";
- if(/ノンオイル.*ドレッシング|ドレッシング.*ノンオイル/.test(n)) return "ドレッシングタイプ和風調味料 ノンオイルタイプ";
- if(/和風.*ドレッシング|ドレッシング.*和風/.test(n)) return "ドレッシングタイプ和風調味料";
+ if(/オリーブオイル|オリーブ油/.test(n)) return "オリーブ油";
  if(/ごま.*ドレッシング|胡麻.*ドレッシング/.test(n)) return "ごまドレッシング";
- if(/フレンチ.*ドレッシング/.test(n)) return "フレンチドレッシング";
  if(/マヨネーズ/.test(n)) return "マヨネーズ 全卵型";
+ if(/ポン酢|ぽん酢/.test(n)) return "ぽん酢しょうゆ";
+ if(/ケチャップ/.test(n)) return "トマトケチャップ";
+ if(/醤油|しょうゆ/.test(n)) return "こいくちしょうゆ";
+ if(/中濃ソース/.test(n)) return "中濃ソース";
  return name;
 }
 function findFood(name){
