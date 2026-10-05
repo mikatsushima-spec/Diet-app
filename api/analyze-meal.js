@@ -116,8 +116,11 @@ function nutrients(items){
   const nutritionAt=(cand)=>{const row=findFoodByNumber(cand?.food_number);if(!row)return null;const k=g/100;return {kcal:Number(row[1]||0)*k,p:Number(row[2]||0)*k,f:Number(row[3]||0)*k,c:Number(row[4]||0)*k}};
   const base=nutritionAt(chosen),alt=nutritionAt(runner);
   const impact=base&&alt?Math.max(Math.abs(base.kcal-alt.kcal),Math.abs(base.p-alt.p)*4,Math.abs(base.f-alt.f)*9,Math.abs(base.c-alt.c)*4):0;
-  const materialImpact=impact>=35;
-  return {...item,food_candidates:candidates,needs_food_confirmation:ambiguous&&materialImpact&&!item.selected_food_number};
+  // Confirmation should be rare: only ask when the ambiguity can materially
+  // change the meal. Minor produce/tea varieties are never worth interrupting for.
+  const trivialCategory=/トマト|きゅうり|レタス|キャベツ|葉菜|野菜|きのこ|紅茶|茶|コーヒー/.test(String(item.food_name||""));
+  const materialImpact=impact>=70;
+  return {...item,food_candidates:candidates,needs_food_confirmation:ambiguous&&materialImpact&&!trivialCategory&&!item.selected_food_number};
  });
  Object.keys(total).forEach(x=>total[x]=Math.round(total[x]*10)/10);return{items:mapped,total,unmapped,complete:unmapped.length===0}
 }
