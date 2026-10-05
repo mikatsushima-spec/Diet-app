@@ -62,3 +62,7 @@ nav button:first-child{color:#e95e8d}
 
 .saved-food{position:relative;padding-right:42px}
 .delete-meal{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:28px;height:28px;padding:0;border:0;border-radius:50%;background:#fff1f5;color:#e85c8b;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center}
+
+/* Weight chart axis labels */
+.weight-chart svg .axis-label{font-size:3.1px;fill:#8f7d84;font-weight:600;dominant-baseline:middle}
+.chart-unit{position:absolute;left:3px;bottom:39px;font-size:11px;color:#8f7d84;font-weight:700}
