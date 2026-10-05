@@ -26,3 +26,7 @@ nav button:first-child{color:#e95e8d}
 .install-card{background:linear-gradient(135deg,#ff739f,#ffb56b)}
 .detected{background:#fff5f7}
 .sheet{background:#fffdfb}
+
+.detected-row{position:relative;padding-right:42px!important}
+.remove-item{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:32px;height:32px;border:0;border-radius:50%;background:#fff0f5;color:#d94f7e;font-size:22px;line-height:1;display:grid;place-items:center;cursor:pointer}
+.remove-item:active{transform:translateY(-50%) scale(.94)}
