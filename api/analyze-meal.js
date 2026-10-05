@@ -75,7 +75,19 @@ JSONのみ:
     try{vision=JSON.parse(raw)}catch(parseErr){const start=raw.indexOf("{"),end=raw.lastIndexOf("}");if(start<0||end<=start)throw new Error("AI response was not valid JSON");vision=JSON.parse(raw.slice(start,end+1))}
   }
   if(vision.items?.length){
-    const pastry=vision.items.filter(x=>/焼き菓子の生地|パイ.*生地|タルト.*生地|りんごのフィリング|リンゴ.*フィリング|焼き菓子表面の卵液|照り用つや出し/.test(x.food_name));
+    const nonFood=/ナプキン|ティッシュ|皿|プレート|カップ|ポット|フォーク|スプーン|ナイフ|箸|ストロー|包装|包み紙|容器|トレー|コースター/i;
+    const unusedAccessory=/砂糖スティック|角砂糖|シュガー|ミルクピッチャー|コーヒーフレッシュ|ガムシロップ|シロップ.*小袋|ソース.*小袋/i;
+    vision.items=vision.items.filter(x=>{
+      const name=String(x.food_name||"");
+      const method=String(x.cooking_method||"");
+      if(nonFood.test(name))return false;
+      if(/未使用|使用していない|添え物/.test(method))return false;
+      if(unusedAccessory.test(name)&&!/使用済|投入|混ぜ|加え/.test(method))return false;
+      return true;
+    });
+  }
+  if(vision.items?.length){
+    const pastry=vision.items.filter(x=>/焼き菓子の生地|ケーキの生地|スポンジ.*生地|パイ.*生地|タルト.*生地|りんご.*フィリング|リンゴ.*フィリング|りんご系フィリング|焼き菓子表面の卵液|照り用つや出し|グレーズ|砂糖がけ/.test(x.food_name));
     const hasApple=pastry.some(x=>/りんご|リンゴ/.test(x.food_name));
     const hasCrust=pastry.some(x=>/生地/.test(x.food_name));
     if(hasApple&&hasCrust){
