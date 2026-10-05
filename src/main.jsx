@@ -60,19 +60,28 @@ function Weight({s,setS}){
  const vals=chart.map(x=>Number(x.weight)).filter(Number.isFinite);
  const min=Math.min(...vals,target)-1,max=Math.max(...vals,target)+1,range=Math.max(1,max-min);
  const pts=chart.map((x,i)=>({x:chart.length===1?50:5+i*90/(chart.length-1),y:8+(max-Number(x.weight))/range*64,...x}));
+ const avgAll=all.map((r,i)=>{
+   const d=new Date(r.date+'T00:00:00'),from=new Date(d);from.setDate(from.getDate()-6);
+   const window=all.filter(a=>{const ad=new Date(a.date+'T00:00:00');return ad>=from&&ad<=d}).map(a=>Number(a.weight)).filter(Number.isFinite);
+   return {...r,avg7:window.length?window.reduce((a,b)=>a+b,0)/window.length:null};
+ });
+ const avgData=avgAll.filter(x=>chart.some(d=>d.date===x.date));
+ const avgPts=avgData.map(x=>{const p=pts.find(d=>d.date===x.date);return p&&x.avg7!=null?{x:p.x,y:8+(max-x.avg7)/range*64,...x}:null}).filter(Boolean);
  const targetY=8+(max-target)/range*64;
  return <section><header><h1>体重</h1></header>
   <div className="hero"><small>現在</small><strong>{displayNum(latest)} <i>kg</i></strong><p>目標 {displayNum(target)} kg ／ あと <b>{displayNum(Math.max(0,latest-target))} kg</b></p></div>
   <button className="primary" onClick={add}>今日の体重を入力</button>
-  <div className="card weight-chart-card"><div className="chart-head"><div><h3>体重の推移</h3><small>実測値と目標体重</small></div><div className="period-tabs">{periods.map(p=><button key={p} className={period===p?'active':''} onClick={()=>setPeriod(p)}>{p===30?'1か月':p===90?'3か月':p===180?'6か月':'全期間'}</button>)}</div></div>
+  <div className="card weight-chart-card"><div className="chart-head"><div><h3>体重の推移</h3><small>実測値・7日平均・目標体重</small></div><div className="period-tabs">{periods.map(p=><button key={p} className={period===p?'active':''} onClick={()=>setPeriod(p)}>{p===30?'1か月':p===90?'3か月':p===180?'6か月':'全期間'}</button>)}</div></div>
    <div className="weight-chart">
     <div className="target-label" style={{top:targetY+'%'}}>目標 {displayNum(target)}kg</div>
     <svg viewBox="0 0 100 82" preserveAspectRatio="none" aria-label="体重推移グラフ">
      {[8,26,44,62,80].map(y=><line key={y} x1="5" x2="95" y1={y} y2={y} className="gridline"/>)}
      <line x1="5" x2="95" y1={targetY} y2={targetY} className="target-line"/>
      {pts.length>1&&<polyline points={pts.map(p=>p.x+','+p.y).join(' ')} className="weight-line"/>}
+     {avgPts.length>1&&<polyline points={avgPts.map(p=>p.x+','+p.y).join(' ')} className="avg-line"/>}
      {pts.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r="1.8" className="weight-dot"/>)}
     </svg>
+    <div className="chart-legend"><span><i className="legend-actual"/>実測</span><span><i className="legend-avg"/>7日平均</span><span><i className="legend-target"/>目標</span></div>
     <div className="chart-axis"><span>{chart[0]?.date?.slice(5).replace('-','/')}</span><span>{chart.at(-1)?.date?.slice(5).replace('-','/')}</span></div>
    </div>
    <div className="weight-summary"><div><small>現在</small><b>{displayNum(latest)} kg</b></div><div><small>目標</small><b>{displayNum(target)} kg</b></div><div><small>差</small><b>{displayNum(latest-target)} kg</b></div></div>
