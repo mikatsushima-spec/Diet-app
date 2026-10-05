@@ -110,7 +110,14 @@ function nutrients(items){
   const chosen=candidates.find(x=>String(x.food_number)===String(item.food_number));
   const runner=candidates.find(x=>String(x.food_number)!==String(item.food_number));
   const ambiguous=!!runner&&(!chosen||chosen.score-runner.score<80);
-  return {...item,food_candidates:candidates,needs_food_confirmation:ambiguous&&!item.selected_food_number};
+  // Ask only when choosing another plausible food would materially change this serving.
+  // Small differences (tea varieties, similar vegetables, etc.) stay automatic.
+  const g=Math.max(0,Number(item.estimated_amount_g)||0);
+  const nutritionAt=(cand)=>{const row=findFoodByNumber(cand?.food_number);if(!row)return null;const k=g/100;return {kcal:Number(row[1]||0)*k,p:Number(row[2]||0)*k,f:Number(row[3]||0)*k,c:Number(row[4]||0)*k}};
+  const base=nutritionAt(chosen),alt=nutritionAt(runner);
+  const impact=base&&alt?Math.max(Math.abs(base.kcal-alt.kcal),Math.abs(base.p-alt.p)*4,Math.abs(base.f-alt.f)*9,Math.abs(base.c-alt.c)*4):0;
+  const materialImpact=impact>=35;
+  return {...item,food_candidates:candidates,needs_food_confirmation:ambiguous&&materialImpact&&!item.selected_food_number};
  });
  Object.keys(total).forEach(x=>total[x]=Math.round(total[x]*10)/10);return{items:mapped,total,unmapped,complete:unmapped.length===0}
 }
