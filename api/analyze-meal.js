@@ -159,6 +159,43 @@ JSONのみで {"canonical_name":"","canonical_category":"","is_food":true,"is_ga
  return {items:out,newlyNormalized};
 }
 
+
+async function reconcileNormalizedItems(client,items=[]){
+ if(items.length<2)return items;
+ try{
+  const response=await client.responses.create({
+   model:process.env.OPENAI_NORMALIZATION_MODEL||process.env.OPENAI_VISION_MODEL||"gpt-5.4-mini",
+   input:`あなたは食事記録の重複・構成要素を整理するリコンサイラです。入力はすでに食品名正規化済みです。栄養値は生成しません。
+目的は、同じ実物を二重計上しないことです。
+ルール:
+- 同じ完成食品が重複している場合は1件に統合する。重量は二つを足さず、写真から同一物の別推定なら原則として信頼度が高い方、または妥当な代表値を採用する。
+- 完成食品と、その食品の内部構成要素（例: 完成したパイ + フィリング/生地/表面グレーズ）が同時にある場合、構成要素は完成食品に包含し、別計上しない。
+- ただし別添えで実際に追加摂取する可能性がある砂糖、ミルク、ドレッシング、ソース等は統合せず残す。
+- 別々に食べる食品は統合しない。
+- 食品名を新たに推測して変更しない。入力の canonical_name を尊重する。
+JSONのみで {"groups":[{"keep_index":0,"drop_indices":[1],"reason":"same_food_duplicate"}]} を返す。統合不要なら {"groups":[]}。
+入力: ${JSON.stringify(items.map((x,i)=>({index:i,food_name:x.food_name,canonical_name:x.canonical_name||x.nutrition_search_name,grams:x.estimated_amount_g,confidence:x.confidence,assumption:x.assumption,optional_consumption:x.optional_consumption})))}`
+  });
+  let raw=(response.output_text||"").trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,"");
+  const a=raw.indexOf("{"),b=raw.lastIndexOf("}");
+  if(a<0||b<=a)return items;
+  const parsed=JSON.parse(raw.slice(a,b+1));
+  const drop=new Set();
+  for(const g of parsed.groups||[]){
+   const keep=Number(g.keep_index);
+   if(!Number.isInteger(keep)||!items[keep])continue;
+   for(const di of g.drop_indices||[]){
+    const d=Number(di);
+    if(!Number.isInteger(d)||!items[d]||d===keep)continue;
+    // Safety: never auto-drop optional user-decision condiments/accessories.
+    if(items[d].optional_consumption)continue;
+    drop.add(d);
+   }
+  }
+  return items.filter((_,i)=>!drop.has(i));
+ }catch{return items;}
+}
+
 export default async function handler(req,res){
  if(req.method!=="POST")return res.status(405).json({error:"Method not allowed"});
  if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:"OPENAI_API_KEY is not configured"});
@@ -217,17 +254,6 @@ JSONのみ:
     });
   }
   if(vision.items?.length){
-    const pastry=vision.items.filter(x=>/焼き菓子の生地|ケーキの生地|スポンジ.*生地|パイ.*生地|タルト.*生地|りんご.*フィリング|リンゴ.*フィリング|りんご系フィリング|フィリング.*トッピング|焼き菓子表面の卵液|照り用つや出し|グレーズ|砂糖がけ/.test(x.food_name));
-    const hasApple=pastry.some(x=>/りんご|リンゴ|アップル/.test(x.food_name));
-    const hasCrust=pastry.some(x=>/生地|スポンジ|パイ|タルト/.test(x.food_name));
-    if(hasApple&&hasCrust){
-      const totalG=pastry.reduce((s,x)=>s+(Number(x.estimated_amount_g)||0),0);
-      const remove=new Set(pastry);
-      vision.items=[...vision.items.filter(x=>!remove.has(x)),{food_name:"アップルパイ",estimated_amount_g:Math.round(totalG),amount_min_g:null,amount_max_g:null,cooking_method:"焼成",confidence:Math.min(...pastry.map(x=>Number(x.confidence)||0.7)),assumption:"りんご系の焼き菓子を完成品として統合",alternatives:[]}];
-      vision.dish_name=/紅茶/.test(vision.dish_name||"")?"ミルクティーとアップルパイ":"アップルパイ";
-    }
-  }
-  if(vision.items?.length){
     const tea=vision.items.filter(x=>/紅茶/.test(x.food_name));
     if(tea.length>1){
       // A cup and a pot are usually the same serving context. Count the cup as consumed;
@@ -266,6 +292,9 @@ JSONのみ:
   // Vision says what it sees; this layer decides the stable food concept; nutrients() only resolves DB rows.
   const normalized=await normalizeItems(client,vision.items||[],normalization_cache);
   vision.items=normalized.items.filter(x=>x.is_food!==false&&!x.is_garnish);
+  // Generic second pass: remove duplicate representations of the same physical food
+  // and components already included in a recognized finished dish.
+  vision.items=await reconcileNormalizedItems(client,vision.items);
   let calculated=nutrients(vision.items||[]);
   let web_fallbacks=[];
   if(!calculated.complete){
