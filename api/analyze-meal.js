@@ -267,12 +267,24 @@ JSONのみ:
     const labelReady=(vision.items||[]).some(x=>x.nutrition_source==="package_label"&&labelNutrients(x));
     if(packageDetected&&!labelReady){
       const lr=await client.responses.create({model:process.env.OPENAI_VISION_MODEL||"gpt-5.4-mini",input:[{role:"user",content:[
-        {type:"input_text",text:"包装食品の栄養成分表示だけを読み取ってください。原材料名は無視してください。印字されている値だけを転記し、推測しないでください。JSONのみ: {\"basis\":\"1包装\",\"calories\":null,\"protein_g\":null,\"fat_g\":null,\"carbohydrate_g\":null,\"salt_g\":null}"},
+        {type:"input_text",text:"包装食品ラベルの『栄養成分表示』だけを読んでください。原材料名は無視。熱量、たんぱく質、脂質、炭水化物、食塩相当量と表示基準を、印字どおりに転記してください。推測禁止。JSONのみ: {\"basis\":\"1包装\",\"calories\":null,\"protein_g\":null,\"fat_g\":null,\"carbohydrate_g\":null,\"salt_g\":null}"},
         {type:"input_image",image_url:image,detail:"high"}
       ]}]});
       let rr=(lr.output_text||"").trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,"");
       const aa=rr.indexOf("{"),bb=rr.lastIndexOf("}");
-      if(aa>=0&&bb>aa){try{const lab=JSON.parse(rr.slice(aa,bb+1));if(lab.calories!==null&&lab.protein_g!==null&&lab.fat_g!==null&&lab.carbohydrate_g!==null&&[lab.calories,lab.protein_g,lab.fat_g,lab.carbohydrate_g].every(v=>v!==""&&Number.isFinite(Number(v)))){vision.items=[{food_name:vision.dish_name||"包装食品",estimated_amount_g:null,serving_count:1,amount_display:lab.basis||"1包装",nutrition_source:"package_label",label_nutrition:lab,alternatives:[]}];vision.notes=["栄養成分表示の記載値を使用しています。"];vision.needs_user_confirmation=[]}}catch{}}
+      if(aa>=0&&bb>aa){try{
+        const lab=JSON.parse(rr.slice(aa,bb+1));
+        const valid=["calories","protein_g","fat_g","carbohydrate_g"].every(k=>lab[k]!==null&&lab[k]!==""&&Number.isFinite(Number(lab[k])));
+        if(valid){
+          vision.items=[{food_name:vision.dish_name||"包装食品",estimated_amount_g:null,serving_count:1,amount_display:lab.basis||"1包装",nutrition_source:"package_label",label_nutrition:lab,alternatives:[]}];
+          vision.notes=["栄養成分表示の記載値を使用しています。"];vision.needs_user_confirmation=[];
+        }else{
+          vision.label_read_failed=true;
+          vision.items=[];
+          vision.notes=["栄養成分表示は検出しましたが、数値を正確に読み取れませんでした。栄養成分表示を大きく写して再撮影してください。"];
+          vision.needs_user_confirmation=[];
+        }
+      }catch{vision.label_read_failed=true;vision.items=[];vision.notes=["栄養成分表示を正確に読み取れませんでした。栄養成分表示を大きく写して再撮影してください。"]}}
     }
   }
   if(/クッキー|ビスケット|サブレ/.test(vision.dish_name||"")&&!vision.items?.some(x=>/クッキー|ビスケット|サブレ/.test(x.food_name||""))){
