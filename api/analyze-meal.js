@@ -242,17 +242,33 @@ export default async function handler(req,res){
   if(!providedItems&&!image?.startsWith("data:image/"))return res.status(400).json({error:"Image is required"});
   const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY});
   if(label_only&&image){
-    const lr=await client.responses.create({model:process.env.OPENAI_VISION_MODEL||"gpt-5.4-mini",input:[{role:"user",content:[
-      {type:"input_text",text:"これは栄養成分表示の読み取り専用モードです。料理の推定、原材料の列挙、重量推定、食品成分表による補完は一切しないでください。画像内の『栄養成分表示』を探し、表示基準（例:1包装あたり/1個あたり/100gあたり）、熱量、たんぱく質、脂質、炭水化物、食塩相当量だけを印字どおりに転記してください。数値を推測しないでください。JSONのみ: {\"product_name\":null,\"basis\":null,\"calories\":null,\"protein_g\":null,\"fat_g\":null,\"carbohydrate_g\":null,\"salt_g\":null}"},
+    const model=process.env.OPENAI_VISION_MODEL||"gpt-6-luna";
+    // Pass 1 is deliberately transcription-only. Asking vision to OCR and construct JSON
+    // in one step proved brittle for small Japanese package labels.
+    const tr=await client.responses.create({model,input:[{role:"user",content:[
+      {type:"input_text",text:"栄養成分表示の読み取り専用です。画像全体を確認し、『栄養成分表示』の見出しから、表示基準、熱量、たんぱく質、脂質、炭水化物、食塩相当量が書かれた部分だけを文字起こししてください。原材料名、賞味期限、製造者、バーコードは無視してください。改行や項目順は画像のままで構いません。数字・小数点・単位を最優先で正確に転記し、推測しないでください。JSONにはせず、読めた文字だけ返してください。"},
       {type:"input_image",image_url:image,detail:"high"}
     ]}]});
-    let raw=(lr.output_text||"").trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,""),a=raw.indexOf("{"),b=raw.lastIndexOf("}"),lab={};
-    if(a>=0&&b>a){try{lab=JSON.parse(raw.slice(a,b+1))}catch{}}
-    const required=["calories","protein_g","fat_g","carbohydrate_g"];
-    const valid=required.every(k=>lab[k]!==null&&lab[k]!==""&&Number.isFinite(Number(lab[k])));
-    if(!valid)return res.status(200).json({dish_name:lab.product_name||"包装食品",items:[],nutrition:{calories:null,protein_g:null,fat_g:null,carbohydrate_g:null,fiber_g:null,salt_g:null},label_read_failed:true,notes:["栄養成分表示を正確に読み取れませんでした。ラベル部分を画面いっぱいに写して再撮影してください。"],needs_user_confirmation:[]});
-    const nutrition={calories:Number(lab.calories),protein_g:Number(lab.protein_g),fat_g:Number(lab.fat_g),carbohydrate_g:Number(lab.carbohydrate_g),fiber_g:0,salt_g:lab.salt_g==null?0:Number(lab.salt_g)};
-    return res.status(200).json({dish_name:lab.product_name||"包装食品",items:[{food_name:lab.product_name||"包装食品",estimated_amount_g:null,serving_count:1,amount_display:lab.basis||"1包装",nutrition_source:"package_label",label_nutrition:lab,...nutrition}],nutrition,calculation_note:"栄養成分表示の記載値をそのまま使用しています。",notes:["栄養成分表示の記載値を使用しています。"],needs_user_confirmation:[],label_read_failed:false});
+    const transcript=(tr.output_text||"").replace(/[：:]/g,":").replace(/[，,]/g,".").replace(/\s+/g," ").trim();
+    const numberAfter=(labels)=>{
+      for(const label of labels){
+        const re=new RegExp(label+"\\s*:?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kcal|g)?","i");
+        const m=transcript.match(re); if(m)return Number(m[1]);
+      }
+      return null;
+    };
+    const calories=numberAfter(["熱量","エネルギー"]);
+    const protein_g=numberAfter(["たんぱく質","タンパク質","蛋白質"]);
+    const fat_g=numberAfter(["脂質"]);
+    const carbohydrate_g=numberAfter(["炭水化物"]);
+    const salt_g=numberAfter(["食塩相当量"]);
+    const bm=transcript.match(/栄養成分表示\s*[（(]?\s*([^）)]{1,30}(?:あたり|当たり))\s*[）)]?/);
+    const basis=bm?.[1]?.trim()||"1包装あたり";
+    const lab={basis,calories,protein_g,fat_g,carbohydrate_g,salt_g};
+    const valid=["calories","protein_g","fat_g","carbohydrate_g"].every(k=>Number.isFinite(lab[k]));
+    if(!valid)return res.status(200).json({dish_name:"包装食品",items:[],nutrition:{calories:null,protein_g:null,fat_g:null,carbohydrate_g:null,fiber_g:null,salt_g:null},label_read_failed:true,notes:["栄養成分表示を正確に読み取れませんでした。ラベル部分を画面いっぱいに写して再撮影してください。"],needs_user_confirmation:[]});
+    const nutrition={calories,protein_g,fat_g,carbohydrate_g,fiber_g:0,salt_g:Number.isFinite(salt_g)?salt_g:0};
+    return res.status(200).json({dish_name:"包装食品",items:[{food_name:"包装食品",estimated_amount_g:null,serving_count:1,amount_display:basis,nutrition_source:"package_label",label_nutrition:lab,...nutrition}],nutrition,calculation_note:"栄養成分表示の記載値をそのまま使用しています。",notes:["栄養成分表示の記載値を使用しています。"],needs_user_confirmation:[],label_read_failed:false});
   }
   const prompt=`日本の食事写真を栄養計算用に分析してください。皿単位の料理名だけでなく、栄養計算できる構成要素へ分解します。
 手順:
