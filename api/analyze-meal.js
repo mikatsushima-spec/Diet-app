@@ -105,6 +105,7 @@ function labelNutrients(item){
 function nutrients(items){
  let total={calories:0,protein_g:0,fat_g:0,carbohydrate_g:0,fiber_g:0,salt_g:0},mapped=[],unmapped=[];
  for(const item of items){
+  if(item.nutrition_source==="package_label"){mapped.push({...item,nutrition_source:"package_label_unreadable"});unmapped.push(item.food_name);continue}
   const food=findFood(item.nutrition_search_name||item.food_name,item.selected_food_number); const g=Number(item.estimated_amount_g)||0;
   if(g<=0||/未使用/.test(item.cooking_method||"")){mapped.push({...item,estimated_amount_g:0,nutrition_source:"not_consumed"});continue}
   if(food&&nutritionIsPlausible(food,g)){let k=g/100;let v={calories:food[1]*k,protein_g:food[2]*k,fat_g:food[3]*k,carbohydrate_g:food[4]*k,fiber_g:(food[5]||0)*k,salt_g:(food[6]||0)*k};Object.keys(total).forEach(x=>total[x]+=v[x]);mapped.push({...item,nutrition_source:"mext_food_master",food_number:food[7],...Object.fromEntries(Object.entries(v).map(([k,v])=>[k,Math.round(v*10)/10]))})}
