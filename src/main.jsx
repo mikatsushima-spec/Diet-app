@@ -19,14 +19,16 @@ async function picked(type,e){let file=e.target.files?.[0];if(!file)return;let u
      let names=(data.items||[]).map(x=>x.food_name).join('・');setScan(x=>({...x,name:data.dish_name||names||'食事',items:data.items||[],notes:data.notes||[],cal:data.nutrition?.calories??'',p:data.nutrition?.protein_g??'',f:data.nutrition?.fat_g??'',c:data.nutrition?.carbohydrate_g??'',calculation_note:data.calculation_note,needs_confirmation:data.needs_user_confirmation||[]}))}catch(err){setScan(x=>({...x,name:'',error:(err?.message||'').includes('413')?'写真を小さくして再送できませんでした。もう一度写真を選んでください。':'AI解析を利用できません：'+(err?.message||'不明なエラー')}))}finally{setAnalyzing(false)}}
 async function removeDetectedItem(index){
  if(!scan?.items)return;
+ // Remove immediately in the UI. Nutrition recalculation can finish in the background.
  const items=scan.items.filter((_,i)=>i!==index);
- setAnalyzing(true);
+ const removed=scan.items[index];
+ const subtract=(key,current)=>{const v=Number(removed?.[key]);return Number.isFinite(v)?Math.max(0,Math.round((Number(current||0)-v)*10)/10):current};
+ setScan(x=>({...x,items,cal:subtract('calories',x.cal),p:subtract('protein_g',x.p),f:subtract('fat_g',x.f),c:subtract('carbohydrate_g',x.c),error:null}));
  try{
   let r=await fetch('/api/analyze-meal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items,dish_name:scan.name,food_cache:JSON.parse(localStorage.getItem(FOOD_CACHE_KEY)||'{}')})});
   let raw=await r.text(),data={};try{data=JSON.parse(raw)}catch{}if(!r.ok)throw new Error(data.detail||data.error||raw||('HTTP '+r.status));
-  setScan(x=>({...x,items:data.items||items,cal:data.nutrition?.calories??'',p:data.nutrition?.protein_g??'',f:data.nutrition?.fat_g??'',c:data.nutrition?.carbohydrate_g??'',calculation_note:data.calculation_note,needs_confirmation:data.needs_user_confirmation||[]}));
- }catch(err){setScan(x=>({...x,error:'再計算できませんでした：'+(err?.message||'不明なエラー')}))}
- finally{setAnalyzing(false)}
+  setScan(x=>({...x,items:data.items||x.items,cal:data.nutrition?.calories??x.cal,p:data.nutrition?.protein_g??x.p,f:data.nutrition?.fat_g??x.f,c:data.nutrition?.carbohydrate_g??x.c,calculation_note:data.calculation_note,needs_confirmation:data.needs_user_confirmation||[]}));
+ }catch(err){setScan(x=>({...x,error:'栄養値の再計算に失敗しました。項目の削除は反映されています。'}))}
 }
 async function recalcItem(index,patch){
  setAnalyzing(true);
