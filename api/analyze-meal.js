@@ -241,6 +241,18 @@ export default async function handler(req,res){
   const {image,label_only=false,food_cache={},normalization_cache={},overrides={},items:providedItems,dish_name:providedDishName}=req.body||{};
   if(!providedItems&&!image?.startsWith("data:image/"))return res.status(400).json({error:"Image is required"});
   const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY});
+  if(req.body?.action==="search_food"){
+    const q=String(req.body?.query||"").trim();
+    if(!q)return res.status(200).json({candidates:[]});
+    const nq=norm(q);
+    const scored=FOOD_DB.map(food=>{
+      const nn=norm(food[0]);
+      let score=nn===nq?1000:nn.startsWith(nq)?700:nn.includes(nq)?500:0;
+      if(!score){const toks=tokenizeFood(q);score=toks.reduce((a,t)=>a+(nn.includes(t)?80:0),0)}
+      return {food,score};
+    }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score||a.food[0].length-b.food[0].length).slice(0,12);
+    return res.status(200).json({candidates:scored.map(({food})=>({name:food[0],calories_per_100g:food[1],protein_per_100g:food[2],fat_per_100g:food[3],carbohydrate_per_100g:food[4],fiber_per_100g:food[5]||0,salt_per_100g:food[6]||0,food_number:food[7]}))});
+  }
   if(label_only&&image){
     const model=process.env.OPENAI_VISION_MODEL||"gpt-6-luna";
     // Pass 1 is deliberately transcription-only. Asking vision to OCR and construct JSON
