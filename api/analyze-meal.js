@@ -294,6 +294,7 @@ JSONのみ:
     try{vision=JSON.parse(raw)}catch(parseErr){const start=raw.indexOf("{"),end=raw.lastIndexOf("}");if(start<0||end<=start)throw new Error("AI response was not valid JSON");vision=JSON.parse(raw.slice(start,end+1))}
     // Normal meal mode must never auto-switch to package-label OCR.
     vision.items=(vision.items||[]).map(x=>({...x,nutrition_source:null,label_nutrition:null}));
+  }
   if(/クッキー|ビスケット|サブレ/.test(vision.dish_name||"")&&!vision.items?.some(x=>/クッキー|ビスケット|サブレ/.test(x.food_name||""))){
     vision.items=[...(vision.items||[]),{food_name:"クッキー",estimated_amount_g:40,amount_min_g:30,amount_max_g:55,cooking_method:"焼成",confidence:0.65,assumption:"写真の主役の焼き菓子2枚。AIがitemsから落としたため料理名から復元",alternatives:["ビスケット","サブレ"]}];
   }
