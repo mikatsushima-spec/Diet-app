@@ -87,3 +87,5 @@ nav button:first-child{color:#e95e8d}
 .amount-inline small{font-size:11px!important}
 .foodrow{align-items:center!important}
 .foodrow>div:first-of-type{min-width:0!important;flex:1 1 auto!important}
+
+.person-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:#fff;border:1px solid #e9ece7;border-radius:14px;padding:5px;margin:8px 0 4px;position:sticky;top:max(6px,env(safe-area-inset-top));z-index:5;box-shadow:0 3px 12px rgba(31,55,45,.05)}.person-tabs button{border:0;background:transparent;border-radius:10px;padding:10px 6px;font-weight:700;color:#77817c}.person-tabs button.active{background:#edf6ee;color:#246847}
