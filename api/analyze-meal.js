@@ -286,36 +286,14 @@ JSONのみ:
   if(providedItems){
     vision={dish_name:providedDishName||"食事",items:providedItems,notes:[],needs_user_confirmation:[]};
   }else{
-    const labelFirstPrompt=prompt+`
-9. 重要: 写真の主対象が包装ラベルなら、料理認識よりラベル文字読取を優先する。画像内に「栄養成分表示」が見えたら、そこを拡大して読むつもりで数字を1文字ずつ確認する。特に「（1包装あたり）」「（1個あたり）」の直下/右側にある 熱量・たんぱく質・脂質・炭水化物・食塩相当量 を転記する。食品名だけ返して栄養値を空欄にしてはいけない。栄養表示の行が画像端で切れていて数値が最後まで見えない場合だけ null にする。内容量「1個」は重量1gを意味しない。estimated_amount_g:null, serving_count:1 とする。
+    const mealOnlyPrompt=prompt+`
+9. 絶対条件: このリクエストは通常の料理写真モードである。画像内の文字、商品名、包装、栄養成分表示、バーコードは背景情報として無視する。nutrition_source は package_label にせず、label_nutrition は必ず null にする。写真に文字が見えることを理由にモードを変更してはいけない。
 `;
-    const response=await client.responses.create({model:process.env.OPENAI_VISION_MODEL||"gpt-5.4-mini",input:[{role:"user",content:[{type:"input_text",text:labelFirstPrompt},{type:"input_image",image_url:image,detail:"high"}]}]});
+    const response=await client.responses.create({model:process.env.OPENAI_VISION_MODEL||"gpt-5.4-mini",input:[{role:"user",content:[{type:"input_text",text:mealOnlyPrompt},{type:"input_image",image_url:image,detail:"high"}]}]});
     let raw=(response.output_text||"").trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,"");
     try{vision=JSON.parse(raw)}catch(parseErr){const start=raw.indexOf("{"),end=raw.lastIndexOf("}");if(start<0||end<=start)throw new Error("AI response was not valid JSON");vision=JSON.parse(raw.slice(start,end+1))}
-    const packageDetected=/包装|ラベル|栄養成分表示/.test(JSON.stringify(vision));
-    const labelReady=(vision.items||[]).some(x=>x.nutrition_source==="package_label"&&labelNutrients(x));
-    if(packageDetected&&!labelReady){
-      const lr=await client.responses.create({model:process.env.OPENAI_VISION_MODEL||"gpt-5.4-mini",input:[{role:"user",content:[
-        {type:"input_text",text:"包装食品ラベルの『栄養成分表示』だけを読んでください。原材料名は無視。熱量、たんぱく質、脂質、炭水化物、食塩相当量と表示基準を、印字どおりに転記してください。推測禁止。JSONのみ: {\"basis\":\"1包装\",\"calories\":null,\"protein_g\":null,\"fat_g\":null,\"carbohydrate_g\":null,\"salt_g\":null}"},
-        {type:"input_image",image_url:image,detail:"high"}
-      ]}]});
-      let rr=(lr.output_text||"").trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,"");
-      const aa=rr.indexOf("{"),bb=rr.lastIndexOf("}");
-      if(aa>=0&&bb>aa){try{
-        const lab=JSON.parse(rr.slice(aa,bb+1));
-        const valid=["calories","protein_g","fat_g","carbohydrate_g"].every(k=>lab[k]!==null&&lab[k]!==""&&Number.isFinite(Number(lab[k])));
-        if(valid){
-          vision.items=[{food_name:vision.dish_name||"包装食品",estimated_amount_g:null,serving_count:1,amount_display:lab.basis||"1包装",nutrition_source:"package_label",label_nutrition:lab,alternatives:[]}];
-          vision.notes=["栄養成分表示の記載値を使用しています。"];vision.needs_user_confirmation=[];
-        }else{
-          vision.label_read_failed=true;
-          vision.items=[];
-          vision.notes=["栄養成分表示は検出しましたが、数値を正確に読み取れませんでした。栄養成分表示を大きく写して再撮影してください。"];
-          vision.needs_user_confirmation=[];
-        }
-      }catch{vision.label_read_failed=true;vision.items=[];vision.notes=["栄養成分表示を正確に読み取れませんでした。栄養成分表示を大きく写して再撮影してください。"]}}
-    }
-  }
+    // Normal meal mode must never auto-switch to package-label OCR.
+    vision.items=(vision.items||[]).map(x=>({...x,nutrition_source:null,label_nutrition:null}));
   if(/クッキー|ビスケット|サブレ/.test(vision.dish_name||"")&&!vision.items?.some(x=>/クッキー|ビスケット|サブレ/.test(x.food_name||""))){
     vision.items=[...(vision.items||[]),{food_name:"クッキー",estimated_amount_g:40,amount_min_g:30,amount_max_g:55,cooking_method:"焼成",confidence:0.65,assumption:"写真の主役の焼き菓子2枚。AIがitemsから落としたため料理名から復元",alternatives:["ビスケット","サブレ"]}];
   }
