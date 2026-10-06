@@ -263,6 +263,17 @@ JSONのみ:
     const response=await client.responses.create({model:process.env.OPENAI_VISION_MODEL||"gpt-5.4-mini",input:[{role:"user",content:[{type:"input_text",text:labelFirstPrompt},{type:"input_image",image_url:image,detail:"high"}]}]});
     let raw=(response.output_text||"").trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,"");
     try{vision=JSON.parse(raw)}catch(parseErr){const start=raw.indexOf("{"),end=raw.lastIndexOf("}");if(start<0||end<=start)throw new Error("AI response was not valid JSON");vision=JSON.parse(raw.slice(start,end+1))}
+    const packageDetected=/包装|ラベル|栄養成分表示/.test(JSON.stringify(vision));
+    const labelReady=(vision.items||[]).some(x=>x.nutrition_source==="package_label"&&labelNutrients(x));
+    if(packageDetected&&!labelReady){
+      const lr=await client.responses.create({model:process.env.OPENAI_VISION_MODEL||"gpt-5.4-mini",input:[{role:"user",content:[
+        {type:"input_text",text:"包装食品の栄養成分表示だけを読み取ってください。原材料名は無視してください。印字されている値だけを転記し、推測しないでください。JSONのみ: {\"basis\":\"1包装\",\"calories\":null,\"protein_g\":null,\"fat_g\":null,\"carbohydrate_g\":null,\"salt_g\":null}"},
+        {type:"input_image",image_url:image,detail:"high"}
+      ]}]});
+      let rr=(lr.output_text||"").trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,"");
+      const aa=rr.indexOf("{"),bb=rr.lastIndexOf("}");
+      if(aa>=0&&bb>aa){try{const lab=JSON.parse(rr.slice(aa,bb+1));if(Number.isFinite(Number(lab.calories))){vision.items=[{food_name:vision.dish_name||"包装食品",estimated_amount_g:null,serving_count:1,amount_display:lab.basis||"1包装",nutrition_source:"package_label",label_nutrition:lab,alternatives:[]}];vision.notes=["栄養成分表示の記載値を使用しています。"];vision.needs_user_confirmation=[]}}catch{}}
+    }
   }
   if(/クッキー|ビスケット|サブレ/.test(vision.dish_name||"")&&!vision.items?.some(x=>/クッキー|ビスケット|サブレ/.test(x.food_name||""))){
     vision.items=[...(vision.items||[]),{food_name:"クッキー",estimated_amount_g:40,amount_min_g:30,amount_max_g:55,cooking_method:"焼成",confidence:0.65,assumption:"写真の主役の焼き菓子2枚。AIがitemsから落としたため料理名から復元",alternatives:["ビスケット","サブレ"]}];
