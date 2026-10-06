@@ -255,7 +255,10 @@ JSONのみ:
   if(providedItems){
     vision={dish_name:providedDishName||"食事",items:providedItems,notes:[],needs_user_confirmation:[]};
   }else{
-    const response=await client.responses.create({model:process.env.OPENAI_VISION_MODEL||"gpt-5.4-mini",input:[{role:"user",content:[{type:"input_text",text:prompt},{type:"input_image",image_url:image,detail:"high"}]}]});
+    const labelFirstPrompt=prompt+`
+9. 重要: 写真の主対象が包装ラベルなら、料理認識よりラベル文字読取を優先する。画像内に「栄養成分表示」が見えたら、そこを拡大して読むつもりで数字を1文字ずつ確認する。特に「（1包装あたり）」「（1個あたり）」の直下/右側にある 熱量・たんぱく質・脂質・炭水化物・食塩相当量 を転記する。食品名だけ返して栄養値を空欄にしてはいけない。栄養表示の行が画像端で切れていて数値が最後まで見えない場合だけ null にする。内容量「1個」は重量1gを意味しない。estimated_amount_g:null, serving_count:1 とする。
+`;
+    const response=await client.responses.create({model:process.env.OPENAI_VISION_MODEL||"gpt-5.4-mini",input:[{role:"user",content:[{type:"input_text",text:labelFirstPrompt},{type:"input_image",image_url:image,detail:"high"}]}]});
     let raw=(response.output_text||"").trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,"");
     try{vision=JSON.parse(raw)}catch(parseErr){const start=raw.indexOf("{"),end=raw.lastIndexOf("}");if(start<0||end<=start)throw new Error("AI response was not valid JSON");vision=JSON.parse(raw.slice(start,end+1))}
   }
