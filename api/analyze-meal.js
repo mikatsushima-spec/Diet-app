@@ -242,9 +242,28 @@ export default async function handler(req,res){
     const q=String(req.body?.query||"").trim();
     if(!q)return res.status(200).json({candidates:[]});
     const nq=norm(q);
+    const COMMON_ALIASES={
+      "納豆":["糸引き納豆","挽きわり納豆","五斗納豆"],
+      "ごはん":["水稲めし","精白米 めし"],
+      "白ごはん":["水稲めし","精白米 めし"],
+      "卵":["鶏卵 全卵","ゆで"],
+      "ゆで卵":["鶏卵 全卵 ゆで"],
+      "ヨーグルト":["ヨーグルト 全脂無糖","ヨーグルト 低脂肪無糖"],
+      "豆腐":["木綿豆腐","絹ごし豆腐"],
+      "牛乳":["普通牛乳"],
+      "バナナ":["バナナ 生"],
+      "りんご":["りんご 皮なし 生"],
+      "食パン":["角形食パン"],
+      "鮭":["しろさけ","べにざけ","ぎんざけ"],
+      "鶏むね":["若鶏肉 むね"],
+      "鶏もも":["若鶏肉 もも"]
+    };
+    const aliasTerms=Object.entries(COMMON_ALIASES).filter(([k])=>norm(k).includes(nq)||nq.includes(norm(k))).flatMap(([,v])=>v.map(norm));
     const scored=FOOD_DB.map(food=>{
       const nn=norm(food[0]);
-      let score=nn===nq?1000:nn.startsWith(nq)?700:nn.includes(nq)?500:0;
+      let score=nn===nq?1200:nn.startsWith(nq)?900:nn.includes(nq)?750:0;
+      const ai=aliasTerms.findIndex(t=>nn.includes(t));
+      if(ai>=0)score=Math.max(score,1100-ai*5);
       if(!score){const toks=tokenizeFood(q);score=toks.reduce((a,t)=>a+(nn.includes(t)?80:0),0)}
       return {food,score};
     }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score||a.food[0].length-b.food[0].length).slice(0,12);
