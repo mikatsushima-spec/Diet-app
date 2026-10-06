@@ -272,7 +272,7 @@ JSONのみ:
       ]}]});
       let rr=(lr.output_text||"").trim().replace(/^\`\`\`json\s*/,"").replace(/\`\`\`$/,"");
       const aa=rr.indexOf("{"),bb=rr.lastIndexOf("}");
-      if(aa>=0&&bb>aa){try{const lab=JSON.parse(rr.slice(aa,bb+1));if(Number.isFinite(Number(lab.calories))){vision.items=[{food_name:vision.dish_name||"包装食品",estimated_amount_g:null,serving_count:1,amount_display:lab.basis||"1包装",nutrition_source:"package_label",label_nutrition:lab,alternatives:[]}];vision.notes=["栄養成分表示の記載値を使用しています。"];vision.needs_user_confirmation=[]}}catch{}}
+      if(aa>=0&&bb>aa){try{const lab=JSON.parse(rr.slice(aa,bb+1));if(lab.calories!==null&&lab.protein_g!==null&&lab.fat_g!==null&&lab.carbohydrate_g!==null&&[lab.calories,lab.protein_g,lab.fat_g,lab.carbohydrate_g].every(v=>v!==""&&Number.isFinite(Number(v)))){vision.items=[{food_name:vision.dish_name||"包装食品",estimated_amount_g:null,serving_count:1,amount_display:lab.basis||"1包装",nutrition_source:"package_label",label_nutrition:lab,alternatives:[]}];vision.notes=["栄養成分表示の記載値を使用しています。"];vision.needs_user_confirmation=[]}}catch{}}
     }
   }
   if(/クッキー|ビスケット|サブレ/.test(vision.dish_name||"")&&!vision.items?.some(x=>/クッキー|ビスケット|サブレ/.test(x.food_name||""))){
@@ -357,11 +357,10 @@ JSONのみ:
   }
   // Separate semantic normalization from image recognition and DB resolution.
   // Vision says what it sees; this layer decides the stable food concept; nutrients() only resolves DB rows.
-  const normalized=await normalizeItems(client,vision.items||[],normalization_cache);
+  const hasPackageLabel=(vision.items||[]).some(x=>x.nutrition_source==="package_label");
+  const normalized=hasPackageLabel?{items:vision.items,newlyNormalized:[]}:await normalizeItems(client,vision.items||[],normalization_cache);
   vision.items=normalized.items.filter(x=>x.is_food!==false&&!x.is_garnish);
-  // Generic second pass: remove duplicate representations of the same physical food
-  // and components already included in a recognized finished dish.
-  vision.items=await reconcileNormalizedItems(client,vision.items);
+  if(!hasPackageLabel)vision.items=await reconcileNormalizedItems(client,vision.items);
   let calculated=nutrients(vision.items||[]);
   let web_fallbacks=[];
   if(!calculated.complete){
