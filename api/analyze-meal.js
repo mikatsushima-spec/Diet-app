@@ -95,6 +95,13 @@ function nutritionIsPlausible(food,g){
  if(kcal>50&&macroKcal>0&&(macroKcal/kcal<0.35||macroKcal/kcal>1.65))return false;
  return true;
 }
+function labelNutrients(item){
+ const l=item?.nutrition_source==="package_label"?item.label_nutrition:null;
+ if(!l)return null;
+ const keys=["calories","protein_g","fat_g","carbohydrate_g"];
+ if(keys.some(k=>l[k]==null||!Number.isFinite(Number(l[k]))))return null;
+ return {calories:Number(l.calories),protein_g:Number(l.protein_g),fat_g:Number(l.fat_g),carbohydrate_g:Number(l.carbohydrate_g),fiber_g:Number(l.fiber_g||0),salt_g:Number(l.salt_g||0)};
+}
 function nutrients(items){
  let total={calories:0,protein_g:0,fat_g:0,carbohydrate_g:0,fiber_g:0,salt_g:0},mapped=[],unmapped=[];
  for(const item of items){
@@ -242,7 +249,7 @@ export default async function handler(req,res){
 6. confidenceは食品同定と量推定を総合した0〜1。量が曖昧なら低くする。
 7. カロリーや栄養値、食品成分表の項目名は絶対に生成しない。画像から観察できる名称 food_name、食品カテゴリ food_category、候補 alternatives だけを返す。DBへの対応付けは後工程で行う。\n8. 飲み物が紅茶またはコーヒーの場合、砂糖とミルクは使用有無が不明でも必ず items に候補として追加する。未確認なら estimated_amount_g:0、optional_consumption:true とし、砂糖は food_name:"砂糖"、ミルクは food_name:"牛乳" とする。写真から実使用量を推定できる場合だけ推定量を入れる。notesだけに書いて items から省略してはいけない。
 JSONのみ:
-{"dish_name":"鮭定食","items":[{"food_name":"白ごはん","food_category":"穀類","estimated_amount_g":150,"amount_min_g":130,"amount_max_g":180,"cooking_method":"炊飯","confidence":0.85,"assumption":"茶碗1杯程度","alternatives":[]}],"notes":["写真だけでは判別困難な点"],"needs_user_confirmation":["確認すると精度が上がる項目"]}`;
+{"dish_name":"鮭定食","items":[{"food_name":"白ごはん","food_category":"穀類","estimated_amount_g":150,"amount_min_g":130,"amount_max_g":180,"cooking_method":"炊飯","confidence":0.85,"assumption":"茶碗1杯程度","alternatives":[],"nutrition_source":null,"label_nutrition":null}],"notes":["写真だけでは判別困難な点"],"needs_user_confirmation":["確認すると精度が上がる項目"]}`;
   let vision;
   if(providedItems){
     vision={dish_name:providedDishName||"食事",items:providedItems,notes:[],needs_user_confirmation:[]};
