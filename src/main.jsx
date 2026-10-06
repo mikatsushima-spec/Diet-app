@@ -16,7 +16,13 @@ async function picked(type,e){let file=e.target.files?.[0];if(!file)return;let m
        }
        localStorage.setItem(FOOD_CACHE_KEY,JSON.stringify(cache));
      }
-     let names=(data.items||[]).map(x=>x.food_name).join('・');setScan(x=>({...x,name:data.dish_name||names||'食事',items:data.items||[],notes:data.notes||[],cal:data.nutrition?.calories??'',p:data.nutrition?.protein_g??'',f:data.nutrition?.fat_g??'',c:data.nutrition?.carbohydrate_g??'',calculation_note:data.calculation_note,needs_confirmation:data.needs_user_confirmation||[],error:data.label_read_failed?'栄養成分表示の数値を正確に読み取れませんでした。ラベル部分を大きく写して、もう一度撮影してください。':null,label_read_failed:!!data.label_read_failed}))}catch(err){setScan(x=>({...x,name:'',error:(err?.message||'').includes('413')?'写真を小さくして再送できませんでした。もう一度写真を選んでください。':'AI解析を利用できません：'+(err?.message||'不明なエラー')}))}finally{setAnalyzing(false)}}
+     let names=(data.items||[]).map(x=>x.food_name).join('・');
+     if(mode==='label'&&!data.label_read_failed){
+       const it=(data.items||[])[0];
+       const valid=it?.nutrition_source==='package_label'&&data.nutrition&&['calories','protein_g','fat_g','carbohydrate_g'].every(k=>data.nutrition[k]!==null&&data.nutrition[k]!==undefined&&Number.isFinite(Number(data.nutrition[k])));
+       if(!valid)throw new Error('ラベル専用モードの応答が不正です。通常の料理解析には切り替えません。');
+     }
+     setScan(x=>({...x,name:data.dish_name||names||'食事',items:data.items||[],notes:data.notes||[],cal:data.nutrition?.calories??'',p:data.nutrition?.protein_g??'',f:data.nutrition?.fat_g??'',c:data.nutrition?.carbohydrate_g??'',calculation_note:data.calculation_note,needs_confirmation:data.needs_user_confirmation||[],error:data.label_read_failed?'栄養成分表示の数値を正確に読み取れませんでした。ラベル部分を大きく写して、もう一度撮影してください。':null,label_read_failed:!!data.label_read_failed,scan_mode:mode}))}catch(err){setScan(x=>({...x,name:'',error:(err?.message||'').includes('413')?'写真を小さくして再送できませんでした。もう一度写真を選んでください。':'AI解析を利用できません：'+(err?.message||'不明なエラー')}))}finally{setAnalyzing(false)}}
 async function removeDetectedItem(index){
  if(!scan?.items)return;
  // Remove immediately in the UI. Nutrition recalculation can finish in the background.
