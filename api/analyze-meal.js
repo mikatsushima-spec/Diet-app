@@ -250,7 +250,7 @@ export default async function handler(req,res){
 4. 揚げ物の吸油、炒め油、ドレッシング、マヨネーズ等は見える/調理法から強く示唆される場合だけ別itemにし、推定であることを明示。
 5. 写真で区別できない候補は alternatives に最大2件。断定しない。ただし「食品をitemsに載せるか」と「ユーザーに種類確認を求めるか」は別問題。見えているきゅうり・きのこ等は必ずitemsに載せ、種類差の栄養影響が小さければ後工程で自動処理する。
 6. confidenceは食品同定と量推定を総合した0〜1。量が曖昧なら低くする。
-7. カロリーや栄養値、食品成分表の項目名は絶対に生成しない。画像から観察できる名称 food_name、食品カテゴリ food_category、候補 alternatives だけを返す。DBへの対応付けは後工程で行う。\n8. 飲み物が紅茶またはコーヒーの場合、砂糖とミルクは使用有無が不明でも必ず items に候補として追加する。未確認なら estimated_amount_g:0、optional_consumption:true とし、砂糖は food_name:"砂糖"、ミルクは food_name:"牛乳" とする。写真から実使用量を推定できる場合だけ推定量を入れる。notesだけに書いて items から省略してはいけない。
+7. 通常の料理写真では栄養値を生成しない。ただし包装食品の栄養成分表示が写っている場合は例外で、ラベルに印字された熱量・たんぱく質・脂質・炭水化物・食塩相当量と表示基準をそのまま転記する。推測や食品成分表による補完は禁止。nutrition_source は package_label、label_nutrition に読み取った値を入れる。内容量1個は1gではないため estimated_amount_g は null とする。\n8. 飲み物が紅茶またはコーヒーの場合、砂糖とミルクは使用有無が不明でも必ず items に候補として追加する。未確認なら estimated_amount_g:0、optional_consumption:true とし、砂糖は food_name:"砂糖"、ミルクは food_name:"牛乳" とする。写真から実使用量を推定できる場合だけ推定量を入れる。notesだけに書いて items から省略してはいけない。
 JSONのみ:
 {"dish_name":"鮭定食","items":[{"food_name":"白ごはん","food_category":"穀類","estimated_amount_g":150,"amount_min_g":130,"amount_max_g":180,"cooking_method":"炊飯","confidence":0.85,"assumption":"茶碗1杯程度","alternatives":[],"nutrition_source":null,"label_nutrition":null}],"notes":["写真だけでは判別困難な点"],"needs_user_confirmation":["確認すると精度が上がる項目"]}`;
   let vision;
