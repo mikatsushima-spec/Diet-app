@@ -9,15 +9,22 @@ function Today({s,setS}){const[person,setPerson]=useState('me');const[scan,setSc
 let remaining=Math.max(0,Math.round(targetCal-sum.cal)),pRemain=Math.max(0,Math.round(goals.p-sum.p));
 function remainingAdvice(){
  if(isChild){if(remaining<=0)return '今日のエネルギーの目安量はとれています。成長期なので、まだお腹が空いていたら無理に制限せず食べましょう。';if(remaining>=500)return '成長のための1日の目安まであと約'+remaining+'kcalです。主食に、肉・魚・卵・豆腐などのおかずを組み合わせて、しっかり食べましょう。';return '成長のための1日の目安まであと約'+remaining+'kcalです。食事や間食で無理なく補いましょう。';}
- if(remaining<=0)return '今日はカロリー目安に到達しています。まだお腹が空いていたら、温かいお茶や無糖の飲み物で様子を見て、空腹が強ければ量を決めて軽く食べましょう。';
- let ideas=[];
- if(remaining>=500)ideas.push('ごはん＋魚や鶏肉＋野菜のおかず');
- else if(remaining>=300)ideas.push('小さめのごはん＋焼き魚や冷奴','そば・うどんを軽めに');
- else if(remaining>=180)ideas.push('おにぎり1個','無糖ヨーグルト＋果物','ゆで卵＋小さめのパン');
- else if(remaining>=80)ideas.push('果物','無糖ヨーグルト','ゆで卵');
- else ideas.push('具なしのみそ汁やスープ','少量の果物');
- const nutrient=pRemain>=15?' たんぱく質もあと約'+pRemain+'gなので、魚・鶏肉・卵・豆腐などを入れると整えやすいです。':'';
- return 'あと約'+remaining+'kcal。例えば「'+ideas.join('」「')+'」くらいが候補です。'+nutrient;
+ const names=ms.map(m=>m.name||'').join('・'),month=new Date(d+'T00:00:00').getMonth()+1;
+ const cLeft=Math.round(goals.c-sum.c),pLeft=Math.round(goals.p-sum.p),fLeft=Math.round(goals.f-sum.f);
+ let state=cLeft<=0?'carbHigh':pLeft>=15?'proteinLow':fLeft>=15?'fatLow':'balanced';
+ const seasonal=month>=9&&month<=11?['きのこたっぷりの汁物','白菜やきのこの温かいスープ','焼ききのこを添えたおかず']:month<=2||month===12?['具だくさんの温かいスープ','湯豆腐','蒸し野菜']:month<=5?['春キャベツのスープ','新玉ねぎを使った温かい副菜','蒸し野菜']:['冷ややっこ＋薬味','トマトやきゅうりの副菜','冷たい具だくさんスープ'];
+ const menus={
+  carbHigh:['鶏むね肉ときのこの蒸し物＋野菜スープ','白身魚のホイル焼き＋冷ややっこ','豚しゃぶとたっぷり野菜','卵と豆腐のスープ＋温野菜'],
+  proteinLow:['焼き魚＋野菜のおかず','鶏肉と野菜の蒸し物','冷ややっこ＋卵＋具だくさん汁','豚しゃぶサラダ'],
+  fatLow:['鮭ときのこのホイル焼き','豚肉と野菜の蒸し物','卵入りの具だくさんスープ','冷ややっこに少量のごまや薬味'],
+  balanced:['焼き魚＋野菜＋汁物','鶏肉ときのこの蒸し物','豚しゃぶ＋温野菜','豆腐と卵の具だくさんスープ']
+ };
+ let seed=[...d+names].reduce((a,x)=>a+x.charCodeAt(0),0),menu=menus[state][seed%menus[state].length],season=seasonal[(seed+1)%seasonal.length];
+ let opening=remaining<=100?'今日はかなり目安に近づいています。ここまで記録できているのも十分えらいです。':remaining<=250?'今日はここまでしっかり食べながら記録できています。夕食は「少ない量で我慢」より、満足感を作る組み合わせにしましょう。':'今日はまだ夕食を組み立てられる余裕があります。無理に軽食だけにせず、満足できる一皿を選びましょう。';
+ let balance=state==='carbHigh'?' 炭水化物は上限に近いので、今夜はごはん・パン・麺を足すより、たんぱく質と野菜を中心に。':state==='proteinLow'?' たんぱく質があと約'+Math.max(0,pLeft)+'gあるので、魚・鶏肉・卵・豆腐を主役にすると整います。':state==='fatLow'?' 脂質にはまだ余裕があります。魚・卵・豆腐などを使うと、量を極端に減らさず満足感を出しやすいです。':' PFCも大きく崩れていないので、夕食は量より満足感を意識して大丈夫です。';
+ let eaten=/納豆/.test(names)?' 朝に納豆を食べているので、夜は同じ大豆系だけに寄せず魚や鶏肉にすると変化がつきます。':/豚/.test(names)?' 昼に豚肉を食べているので、夜は魚・鶏肉・卵あたりに変えると飽きにくいです。':/魚|鮭|さば|鯖/.test(names)?' 今日は魚を食べているので、夜は鶏肉や豆腐・卵に変えるのもよさそうです。':'';
+ let fullness=' 最初に'+season+'をゆっくり食べると、温かさと水分で満足感を作りやすいです。よく噛めるきのこ・根菜・海藻を足すのもおすすめ。';
+ return opening+balance+eaten+' 例えば「'+menu+'」。'+fullness;
 }
 function add(type){setPickType(type)}
 async function searchManualFood(q){setManual(x=>({...x,q,food:null,dish:null,error:''}));if(q.trim().length<1){setManualResults([]);return}try{const r=await fetch('/api/analyze-meal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'search_food',query:q})});const data=await r.json();setManualResults(data.candidates||[])}catch{setManualResults([])}}
